@@ -1,5 +1,6 @@
 DEVELOP
 RESULTS
+DATA
 __pycache__
 clvenv
 fpd_recap.py

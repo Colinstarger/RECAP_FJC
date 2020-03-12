@@ -68,6 +68,33 @@ def checkDocket_in_RECAP_Fullinfo(docket):
 		recap_url="https://www.courtlistener.com"+myJson['results'][0]['absolute_url']
 		return ["YES", recap_id, recap_url]
 
+def getParties_RECAP(recap_docket):
+	
+	endpoint="https://www.courtlistener.com/api/rest/v3/parties/?docket="+recap_docket
+	print("Looking for this endpoint", endpoint)
+	myJson=getJSONfromAPI_Auth(endpoint)
+	print("PARTIES JSON")
+	print(myJson)
+	print("-----\n")
+	endpoint="https://www.courtlistener.com/api/rest/v3/attorneys/?docket="+recap_docket
+	print("Looking for this endpoint", endpoint)
+	myJson=getJSONfromAPI_Auth(endpoint)
+	print("ATTORNEYS JSON")
+	print(myJson)
+	"""
+	endpoint="https://www.courtlistener.com/api/rest/v3/dockets/?id="+recap_docket
+	print("Looking for this endpoint", endpoint)
+	myJson=getJSONfromAPI_Auth(endpoint)
+	print("DOCKET JSON")
+	print(myJson)
+	print("DOES THIS WORK")
+	results = myJson['results']
+	first = results[0]
+	assignd = first['assigned_to_str']
+	print(assignd)
+	"""
+
+
 
 def createRecapCheckList(inputfile, outputfile="recap_results.csv", slice_start=0, slice_end=0):
 
@@ -156,13 +183,13 @@ def main():
 
 	#These create RECAP lists with dockets from a FJC list TARGET FILE to an OUTPUT FILE
 	#All the target files are created by SQL Queries to FJC DB
-	target_file="RESULTS/child_exploitation_results.csv"
-	outputfile="RESULTS/child_recap_results.csv"
+	#target_file="RESULTS/child_exploitation_results.csv"
+	#outputfile="RESULTS/child_recap_results.csv"
 	#target_file="bank_robbery_results.csv"
 	#outputfile="bank_robbery_recap_results.csv"
 	#target_file="wirefraud_results.csv"
 	#outputfile="wirefraud_recap_results.csv"
-	createRecapCheckList(target_file, outputfile)
+	#createRecapCheckList(target_file, outputfile)
 
 
 	#checkList_Fetch_Missing go through a checklist created using CreateRecapCheckList
@@ -181,7 +208,10 @@ def main():
 	#testDF = pd.DataFrame(returnTable[1:], columns=returnTable[0])
 	#print(testDF)
 
-
+	#Parties test
+	docket ="1:15-cr-00131"
+	recap_docket = "13264089"
+	getParties_RECAP(recap_docket)
 
 # CALL MAIN
 main()
