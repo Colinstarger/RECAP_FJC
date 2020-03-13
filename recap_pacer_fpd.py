@@ -1,8 +1,10 @@
-#python3
+	#python3
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup as bs
+import json
 from passwords import *
+from python_sql_lib import *
 
 def getJSONfromAPI_Auth(api_url):
 	r = requests.get(api_url, headers={'Authorization': 'Token '+cl_auth_token})
@@ -12,6 +14,34 @@ def getJSONfromAPI(api_url):
 	r=requests.get(api_url)
 	j=r.json()
 	return j
+
+def disagg_fjc_deflogky(deflogkey):
+	#print("Whole key = ", deflogkey)
+	circuit = deflogkey[0:2]
+	district = deflogkey[2:4]
+	office = deflogkey[4:5]
+	docket = deflogkey[5:12]
+	casetype = deflogkey[12:14]
+	defno = deflogkey[14:17]
+	reopen = deflogkey[-1:]
+	returnhash = {"circuit": circuit, "district": district, "office": office, "docket": docket, "casetype": casetype, "defno": defno, "reopen": reopen}
+	#print("Circuit=", circuit, "District=", district, "Office=", office, "Docket=", docket, "Casetype=", casetype, "Def no=", defno, "Reopen=",reopen)
+	return returnhash
+
+def convertFJCSQL_to_Docket(fjc_office, fjc_docket):
+	pacer_docket = fjc_office+":"
+	year = fjc_docket[:2]
+	
+	pacer_docket+=year+"-cr-"
+	dock_slice = fjc_docket[2:]
+	extraZeros = 5-len(dock_slice)
+	if (extraZeros>0):
+		for x in range(extraZeros):
+			dock_slice= "0"+dock_slice
+	pacer_docket += dock_slice
+
+	return pacer_docket
+
 
 def convertFJC_to_Docket(fjc_office, fjc_docket):
 	pacer_docket = fjc_office+":"
@@ -68,19 +98,35 @@ def checkDocket_in_RECAP_Fullinfo(docket):
 		recap_url="https://www.courtlistener.com"+myJson['results'][0]['absolute_url']
 		return ["YES", recap_id, recap_url]
 
+
+def checkDocket_in_MDD_RECAP_Fullinfo(docket):
+	endpoint="https://www.courtlistener.com/api/rest/v3/dockets/?court=mdd&docket_number="+docket
+	#print("Looking for this endpoint", endpoint)
+	myJson=getJSONfromAPI_Auth(endpoint)
+	
+	if (myJson==None or myJson['count']==0):
+		return ["NO"]
+	else:
+		count = myJson['count']
+		recap_id=myJson['results'][0]['id']
+		assigned_to = myJson['results'][0]['assigned_to_str']
+		case_name = myJson['results'][0]['case_name']
+		return ["YES", count, recap_id, assigned_to, case_name]
+
+
 def getParties_RECAP(recap_docket):
 	
 	endpoint="https://www.courtlistener.com/api/rest/v3/parties/?docket="+recap_docket
 	print("Looking for this endpoint", endpoint)
 	myJson=getJSONfromAPI_Auth(endpoint)
 	print("PARTIES JSON")
-	print(myJson)
+	print(json.dumps(myJson))
 	print("-----\n")
-	endpoint="https://www.courtlistener.com/api/rest/v3/attorneys/?docket="+recap_docket
-	print("Looking for this endpoint", endpoint)
-	myJson=getJSONfromAPI_Auth(endpoint)
-	print("ATTORNEYS JSON")
-	print(myJson)
+	#endpoint="https://www.courtlistener.com/api/rest/v3/attorneys/?docket="+recap_docket
+	#print("Looking for this endpoint", endpoint)
+	#myJson=getJSONfromAPI_Auth(endpoint)
+	#print("ATTORNEYS JSON")
+	#print(myJson)
 	"""
 	endpoint="https://www.courtlistener.com/api/rest/v3/dockets/?id="+recap_docket
 	print("Looking for this endpoint", endpoint)
@@ -173,6 +219,48 @@ def scrapeCharges(partyURL):
 	print("RESULTS TABLE\n", output_table)
 	return(output_table)
 
+def test_get_child_keys():
+
+	fjc_db = openIDB_connection()
+	sql_file = "child_exploit_key_j.sql"
+	sql= open(sql_file).read()
+	resultDF = executeQuery_returnDF(fjc_db, sql)
+	fjc_db.close()
+
+	#just make it a few less as I develop the logic
+	start = 200
+	end =  225 #len(resultDF)
+	resultDF = resultDF[start:end]
+
+	#This is a goofy non-Pythonic way of looping through
+	for x in range(start, end):
+		top_charge = resultDF.at[x,"top_charge"]
+		top_disp = resultDF.at[x,"top_disp"]
+		top_convict = resultDF.at[x,"top_convict"]
+		prison_total = resultDF.at[x,"prison_total"]
+
+		key = resultDF.at[x,"def_key"]
+		disag = disagg_fjc_deflogky(key)
+		#print(disag)
+		pacer_docket = convertFJCSQL_to_Docket(disag['office'], disag['docket'])
+		recap_info = checkDocket_in_MDD_RECAP_Fullinfo(pacer_docket)
+		if (recap_info[0]=="YES"):
+			count = recap_info[1]
+			recap_id = recap_info[2]
+			assigned_to = recap_info[3]
+			case_name = recap_info[4]
+
+			if (count==1):
+				print(pacer_docket, "SINGLE ROW recap id", recap_id, case_name, "assigned to", assigned_to, top_charge, top_disp, top_convict, prison_total)
+			else:
+				print("ALERT!! Pacer docket", pacer_docket, "found", count, "rows")
+			
+		else:
+			print("Pacer docket", pacer_docket, "not found in RECAP")	
+	
+	print()
+
+
 
 
 def main():
@@ -209,9 +297,14 @@ def main():
 	#print(testDF)
 
 	#Parties test
-	docket ="1:15-cr-00131"
-	recap_docket = "13264089"
-	getParties_RECAP(recap_docket)
+	#docket ="1:15-cr-00131"
+	#recap_docket = "13264089"
+	#getParties_RECAP(recap_docket)
+
+	#Test integrating other file
+	#old_main()
+
+	test_get_child_keys()
 
 # CALL MAIN
 main()

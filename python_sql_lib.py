@@ -1,10 +1,16 @@
 #python3
 
 import pandas as pd #pip3 install Pandas
-#import mysql.connector, datetime, calendar, random, sys
 import mysql.connector #pip3 install mysql-connector-python
 from passwords import * 
 
+def executeQuery_returnDF(dbconnection, sqlquery):
+	dbcursor = dbconnection.cursor(dictionary=True)
+	dbcursor.execute(sqlquery)
+	results = dbcursor.fetchall()
+	dbcursor.close()
+	df = pd.DataFrame(results)
+	return df
 
 
 def excuteGenericFileQueryExportResults(dbconnection, sql_file, output_file):
@@ -58,12 +64,20 @@ def createCircuitMegaPandasGeneric(county, sql_file, output_file, begin_year, en
 	dbconnection.close()
 
 
-def main():
+def openIDB_connection():
 	dbconnection = mysql.connector.connect( host=fjc_host, user=fjc_colin, passwd=fjc_colin_password, db=fjc_db)
-	sql_file = "select_child_exploitation_cases.sql"
-	output_file = "RESULTS/child_exploit_results_compare.csv"
-	excuteGenericFileQueryExportResults(dbconnection, sql_file, output_file)
+	return dbconnection
+
+def old_main():
+	dbconnection = mysql.connector.connect( host=fjc_host, user=fjc_colin, passwd=fjc_colin_password, db=fjc_db)
+#	sql_file = "select_child_exploitation_cases.sql"
+#	output_file = "RESULTS/child_exploit_results_compare.csv"
+#	excuteGenericFileQueryExportResults(dbconnection, sql_file, output_file)
+
+	sql_file = "child_exploit_key_j.sql"
+	sql= open(sql_file).read()
+	resultDF = executeQuery_returnDF(dbconnection, sql)
+	print(resultDF)
 	dbconnection.close()
 
-main()
 
