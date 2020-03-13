@@ -6,6 +6,36 @@ import json
 from passwords import *
 from python_sql_lib import *
 
+
+#GLOBAL VARS TO HASH FJC CODES
+
+Disp_Code_Hash ={
+	
+	0: "Rule 20(a)/21 transfer",
+	1: "Dismissed by gov[1]",
+	2: "Acquitted by court/JOA",
+	3: "Acquitted by jury",
+	4: "Guilty plea",
+	5: "Guilty nolo",
+	8: "Convicted by court",
+	9: "Convicted by jury",
+	10: "NARA Titles I and III",
+	11: "Nolle prosequi",
+	12: "Pretrial diversion",
+	13: "Mistrial",
+	14: "Statistically closed",
+	15: "Dismissed w/o prejudice",
+	16: "Not guilty insanity court",
+	17: "Guilty/insane court",
+	18: "Not guilty insanity jury",
+	19: "Guilty/insance jury",
+	20: "Dismissal superseded",
+	21: "Reassigned from judge to magistrate",
+	-8: "Missing data"
+
+}
+
+
 def getJSONfromAPI_Auth(api_url):
 	r = requests.get(api_url, headers={'Authorization': 'Token '+cl_auth_token})
 	return r.json()
@@ -234,9 +264,11 @@ def test_get_child_keys():
 
 	#This is a goofy non-Pythonic way of looping through
 	for x in range(start, end):
+		file_date = resultDF.at[x,"file_date"]
+		disp_date = resultDF.at[x,"disp_date"]
 		top_charge = resultDF.at[x,"top_charge"]
-		top_disp = resultDF.at[x,"top_disp"]
-		top_convict = resultDF.at[x,"top_convict"]
+		top_disp = Disp_Code_Hash[resultDF.at[x,"top_disp"]]
+		top_convict =  resultDF.at[x,"top_convict"]
 		prison_total = resultDF.at[x,"prison_total"]
 
 		key = resultDF.at[x,"def_key"]
@@ -255,6 +287,7 @@ def test_get_child_keys():
 			else:
 				print("ALERT!! Pacer docket", pacer_docket, "found", count, "rows")
 			
+
 		else:
 			print("Pacer docket", pacer_docket, "not found in RECAP")	
 	
