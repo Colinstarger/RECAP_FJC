@@ -10,7 +10,6 @@ from python_sql_lib import *
 #GLOBAL VARS TO HASH FJC CODES
 
 Disp_Code_Hash ={
-	
 	0: "Rule 20(a)/21 transfer",
 	1: "Dismissed by gov[1]",
 	2: "Acquitted by court/JOA",
@@ -32,6 +31,15 @@ Disp_Code_Hash ={
 	20: "Dismissal superseded",
 	21: "Reassigned from judge to magistrate",
 	-8: "Missing data"
+}
+
+Prison_Time_Hash = {
+	-1: "Less than month prison",
+	-2: "Guilty/No sentence",
+	-3: "Sealed sentence",
+	-4: "Life in prison",
+	-5: "Death",
+	-8: "missing data"
 
 }
 
@@ -55,7 +63,6 @@ def disagg_fjc_deflogky(deflogkey):
 	defno = deflogkey[14:17]
 	reopen = deflogkey[-1:]
 	returnhash = {"circuit": circuit, "district": district, "office": office, "docket": docket, "casetype": casetype, "defno": defno, "reopen": reopen}
-	#print("Circuit=", circuit, "District=", district, "Office=", office, "Docket=", docket, "Casetype=", casetype, "Def no=", defno, "Reopen=",reopen)
 	return returnhash
 
 def convertFJCSQL_to_Docket(fjc_office, fjc_docket):
@@ -142,6 +149,60 @@ def checkDocket_in_MDD_RECAP_Fullinfo(docket):
 		assigned_to = myJson['results'][0]['assigned_to_str']
 		case_name = myJson['results'][0]['case_name']
 		return ["YES", count, recap_id, assigned_to, case_name]
+
+
+def getDefendantInfo_RECAP(recap_docket):
+
+	endpoint="https://www.courtlistener.com/api/rest/v3/parties/?docket="+str(recap_docket)
+	#print("Looking for this endpoint", endpoint)
+	myJson=getJSONfromAPI_Auth(endpoint)
+	count = myJson["count"]
+	results = myJson["results"]
+
+	recap_top_charge = "missing"
+	recap_top_disp = "missing"
+	recap_total_charges = -1
+	recap_total_convictions = -1
+
+	#normally defendant is the second returned; sometimes charges missing
+	#def_index = 1
+	#if (count==1):
+	#	def_index = 0
+	def_index = count -1
+
+	def_name = results[def_index]["name"]
+	print("Found defendant", def_name)
+
+	try:
+		charges = results[def_index]["party_types"][0]["criminal_counts"]
+		#print("found charges", charges)
+		recap_total_charges = len(charges)
+		dismissed = 0
+		for charge in charges:
+			if (charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE")):
+				dismissed += 1
+		recap_total_convictions = recap_total_charges-dismissed
+		if (recap_total_convictions == recap_total_charges or recap_total_convictions==0):
+			recap_top_charge= charges[-1]["name"]
+			recap_top_disp = charges[-1]["disposition"]
+		else:
+			for charge in reversed(charges):
+				if not(charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE")):
+					recap_top_charge= charge["name"]
+					recap_top_disp = charge["disposition"]
+					break;
+
+	except:
+		print("No charges found")
+
+	defInfo = {"def_name":def_name, 
+				"recap_top_charge": recap_top_charge,
+				"recap_top_disp": recap_top_disp,
+				"recap_total_charges": recap_total_charges,
+				"recap_total_convictions": recap_total_convictions
+				}
+	return defInfo		
+
 
 
 def getParties_RECAP(recap_docket):
@@ -258,11 +319,12 @@ def test_get_child_keys():
 	fjc_db.close()
 
 	#just make it a few less as I develop the logic
-	start = 200
-	end =  225 #len(resultDF)
+	start = 192
+	end =  195#len(resultDF)
 	resultDF = resultDF[start:end]
 
 	#This is a goofy non-Pythonic way of looping through
+	#Just doing for development; will put into Pandas row function when ready
 	for x in range(start, end):
 		file_date = resultDF.at[x,"file_date"]
 		disp_date = resultDF.at[x,"disp_date"]
@@ -270,10 +332,13 @@ def test_get_child_keys():
 		top_disp = Disp_Code_Hash[resultDF.at[x,"top_disp"]]
 		top_convict =  resultDF.at[x,"top_convict"]
 		prison_total = resultDF.at[x,"prison_total"]
+		if prison_total < 0:
+			prison_total = Prison_Time_Hash[prison_total]
 
 		key = resultDF.at[x,"def_key"]
 		disag = disagg_fjc_deflogky(key)
 		#print(disag)
+		defno = disag['defno']
 		pacer_docket = convertFJCSQL_to_Docket(disag['office'], disag['docket'])
 		recap_info = checkDocket_in_MDD_RECAP_Fullinfo(pacer_docket)
 		if (recap_info[0]=="YES"):
@@ -282,11 +347,17 @@ def test_get_child_keys():
 			assigned_to = recap_info[3]
 			case_name = recap_info[4]
 
-			if (count==1):
-				print(pacer_docket, "SINGLE ROW recap id", recap_id, case_name, "assigned to", assigned_to, top_charge, top_disp, top_convict, prison_total)
+			if (count==1 or defno=="001"):
+				
+				defInfo = getDefendantInfo_RECAP(recap_id)
+				print(pacer_docket, recap_id, case_name, assigned_to)
+				print("FJC", top_charge, top_disp, top_convict, prison_total)
+				print( "RCP Num charges", defInfo['recap_total_charges'], "Convictions", defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'])
 			else:
-				print("ALERT!! Pacer docket", pacer_docket, "found", count, "rows")
-			
+				print("ALERT!! Pacer docket", pacer_docket, "recap", recap_id, "found", count, "rows")
+				print("FJC", top_charge, top_disp, top_convict, prison_total)
+				print("first id", recap_id, "recap_info", recap_info )
+			print("-------\n")			
 
 		else:
 			print("Pacer docket", pacer_docket, "not found in RECAP")	
