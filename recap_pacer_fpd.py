@@ -43,6 +43,35 @@ Prison_Time_Hash = {
 
 }
 
+#This is to deal with bad recap data and multiple defendants. There does not seem to be a pattern to just fixing the items by hand
+CP_Data_Hash = {
+
+	41: 1,
+	120: 0,
+	121: 1,
+	125: 3, # still bad
+	126: 2,
+	127: 1,
+	128: 0,
+	192: 0, #no good one here
+	248: 0, #no good one here
+	302: 4,
+	303: 2,
+	304: 1,
+	305: 3,
+	306: 0,
+	351: 0, #no good one here
+	416: 1,
+	462: 0,
+	469: 0,
+	477: 1,
+	478: 0,
+	485: 0,
+	495: 0,
+	497: 0,
+	498: 0
+	
+}
 
 def getJSONfromAPI_Auth(api_url):
 	r = requests.get(api_url, headers={'Authorization': 'Token '+cl_auth_token})
@@ -148,7 +177,8 @@ def checkDocket_in_MDD_RECAP_Fullinfo(docket):
 		recap_id=myJson['results'][0]['id']
 		assigned_to = myJson['results'][0]['assigned_to_str']
 		case_name = myJson['results'][0]['case_name']
-		return ["YES", count, recap_id, assigned_to, case_name]
+		#return ["YES", count, recap_id, assigned_to, case_name]
+		return ["YES", count, recap_id, assigned_to, case_name, myJson]
 
 
 def getDefendantInfo_RECAP(recap_docket):
@@ -158,42 +188,37 @@ def getDefendantInfo_RECAP(recap_docket):
 	myJson=getJSONfromAPI_Auth(endpoint)
 	count = myJson["count"]
 	results = myJson["results"]
-
+	def_name = "missing"
 	recap_top_charge = "missing"
 	recap_top_disp = "missing"
 	recap_total_charges = -1
 	recap_total_convictions = -1
 
-	#normally defendant is the second returned; sometimes charges missing
-	#def_index = 1
-	#if (count==1):
-	#	def_index = 0
-	def_index = count -1
+	if count>0:
+		def_index = count -1
+		def_name = results[def_index]["name"]
+		#print("Found defendant", def_name)
 
-	def_name = results[def_index]["name"]
-	print("Found defendant", def_name)
-
-	try:
-		charges = results[def_index]["party_types"][0]["criminal_counts"]
-		#print("found charges", charges)
-		recap_total_charges = len(charges)
-		dismissed = 0
-		for charge in charges:
-			if (charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE")):
-				dismissed += 1
-		recap_total_convictions = recap_total_charges-dismissed
-		if (recap_total_convictions == recap_total_charges or recap_total_convictions==0):
-			recap_top_charge= charges[-1]["name"]
-			recap_top_disp = charges[-1]["disposition"]
-		else:
-			for charge in reversed(charges):
-				if not(charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE")):
-					recap_top_charge= charge["name"]
-					recap_top_disp = charge["disposition"]
-					break;
-
-	except:
-		print("No charges found")
+		try:
+			charges = results[def_index]["party_types"][0]["criminal_counts"]
+			#print("found charges", charges)
+			recap_total_charges = len(charges)
+			dismissed = 0
+			for charge in charges:
+				if (charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE")):
+					dismissed += 1
+			recap_total_convictions = recap_total_charges-dismissed
+			if (recap_total_convictions == recap_total_charges or recap_total_convictions==0):
+				recap_top_charge= charges[-1]["name"]
+				recap_top_disp = charges[-1]["disposition"]
+			else:
+				for charge in reversed(charges):
+					if not(charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE")):
+						recap_top_charge= charge["name"]
+						recap_top_disp = charge["disposition"]
+						break;
+		except:
+			print("No charges found")
 
 	defInfo = {"def_name":def_name, 
 				"recap_top_charge": recap_top_charge,
@@ -319,8 +344,8 @@ def test_get_child_keys():
 	fjc_db.close()
 
 	#just make it a few less as I develop the logic
-	start = 192
-	end =  195#len(resultDF)
+	start = 119
+	end =  130 #len(resultDF)
 	resultDF = resultDF[start:end]
 
 	#This is a goofy non-Pythonic way of looping through
@@ -343,26 +368,27 @@ def test_get_child_keys():
 		recap_info = checkDocket_in_MDD_RECAP_Fullinfo(pacer_docket)
 		if (recap_info[0]=="YES"):
 			count = recap_info[1]
-			recap_id = recap_info[2]
-			assigned_to = recap_info[3]
-			case_name = recap_info[4]
+			defInfo="" #will get defined in the function
 
-			if (count==1 or defno=="001"):
-				
+			if (count>1):
+				hash_results = recap_info[5]['results'][CP_Data_Hash[x]]
+				recap_id = hash_results['id']
+				assigned_to = hash_results['assigned_to_str']
+				case_name = hash_results['case_name']
 				defInfo = getDefendantInfo_RECAP(recap_id)
-				print(pacer_docket, recap_id, case_name, assigned_to)
-				print("FJC", top_charge, top_disp, top_convict, prison_total)
-				print( "RCP Num charges", defInfo['recap_total_charges'], "Convictions", defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'])
-			else:
-				print("ALERT!! Pacer docket", pacer_docket, "recap", recap_id, "found", count, "rows")
-				print("FJC", top_charge, top_disp, top_convict, prison_total)
-				print("first id", recap_id, "recap_info", recap_info )
-			print("-------\n")			
+			else: 
+				recap_id = recap_info[2]
+				assigned_to = recap_info[3]
+				case_name = recap_info[4]
+				defInfo = getDefendantInfo_RECAP(recap_id)
+						
+			print("FJC def no", defno, file_date, disp_date, top_charge, top_disp, top_convict, prison_total)
+			print(pacer_docket, recap_id, case_name, assigned_to)
+			print( "RCP Num charges", defInfo['recap_total_charges'], "Convictions", defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'], "\n")
 
 		else:
 			print("Pacer docket", pacer_docket, "not found in RECAP")	
 	
-	print()
 
 
 
