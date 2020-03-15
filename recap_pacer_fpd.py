@@ -44,6 +44,23 @@ Prison_Time_Hash = {
 }
 
 #This is to deal with bad recap data and multiple defendants. There does not seem to be a pattern to just fixing the items by hand
+
+CP_Recap_Exception_Hash = {
+	
+	12102991: 0,
+	4954750: 0,
+	11939605: 0,
+	16901278:0,
+	16914462:2,
+	6280873: 0,
+	6287198:0,
+	6306179:0
+}
+
+CP_Charge_Index_Exception = {
+	
+	4285619: 1
+}
 CP_Data_Hash = {
 
 	41: 1,
@@ -196,16 +213,22 @@ def getDefendantInfo_RECAP(recap_docket):
 
 	if count>0:
 		def_index = count -1
+		if (recap_docket in CP_Recap_Exception_Hash):
+			def_index = CP_Recap_Exception_Hash[recap_docket]
 		def_name = results[def_index]["name"]
 		#print("Found defendant", def_name)
 
 		try:
-			charges = results[def_index]["party_types"][0]["criminal_counts"]
+			charge_index = 0
+			if (recap_docket in CP_Charge_Index_Exception):
+				charge_index = CP_Charge_Index_Exception[recap_docket]
+			#charges = results[def_index]["party_types"][0]["criminal_counts"]
+			charges = results[def_index]["party_types"][charge_index]["criminal_counts"]
 			#print("found charges", charges)
 			recap_total_charges = len(charges)
 			dismissed = 0
 			for charge in charges:
-				if (charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE")):
+				if (charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE", 'ACQUITTAL')):
 					dismissed += 1
 			recap_total_convictions = recap_total_charges-dismissed
 			if (recap_total_convictions == recap_total_charges or recap_total_convictions==0):
@@ -213,7 +236,7 @@ def getDefendantInfo_RECAP(recap_docket):
 				recap_top_disp = charges[-1]["disposition"]
 			else:
 				for charge in reversed(charges):
-					if not(charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE")):
+					if not(charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE", "ACQUITTAL")):
 						recap_top_charge= charge["name"]
 						recap_top_disp = charge["disposition"]
 						break;
@@ -335,6 +358,93 @@ def scrapeCharges(partyURL):
 	print("RESULTS TABLE\n", output_table)
 	return(output_table)
 
+def getChild_RECAP_Row(row):
+	#print ("looking at", row.name, "with key", row["def_key"])
+	index = row.name
+	key = row["def_key"]
+	disag = disagg_fjc_deflogky(key)
+	pacer_docket = convertFJCSQL_to_Docket(disag['office'], disag['docket'])
+	recap_info = checkDocket_in_MDD_RECAP_Fullinfo(pacer_docket)
+	if (recap_info[0]=="YES"):
+		count = recap_info[1]
+		defInfo="" #will get defined in the function
+
+		if (count>1):
+			hash_results = recap_info[5]['results'][CP_Data_Hash[index]]
+			recap_id = hash_results['id']
+			assigned_to = hash_results['assigned_to_str']
+			case_name = hash_results['case_name']
+			defInfo = getDefendantInfo_RECAP(recap_id)
+			docket_link = "www.courtlistener.com"+hash_results['absolute_url']
+		else: 
+			recap_id = recap_info[2]
+			assigned_to = recap_info[3]
+			case_name = recap_info[4]
+			defInfo = getDefendantInfo_RECAP(recap_id)
+			docket_link = "www.courtlistener.com"+recap_info[5]['results'][0]['absolute_url']
+						
+		#print("FJC def no", defno, file_date, disp_date, top_charge, top_disp, top_convict, prison_total)
+		#print(pacer_docket, recap_id, case_name, assigned_to)
+		#print( "RCP Num charges", defInfo['recap_total_charges'], "Convictions", defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'], "\n")
+
+		result_list =[pacer_docket, recap_id, assigned_to, case_name, defInfo['def_name'], defInfo['recap_total_charges'],  defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'], docket_link]
+		return result_list
+
+	else:
+		#print("Pacer docket", pacer_docket, "not found in RECAP")	
+
+		result_list =[pacer_docket, "nir", "nir", "nir", "nir", "nir",  "nir", "nir", "nir", "nir"]
+		return result_list
+	
+
+def FJC_prison_hash(row):
+	prison_total = row["prison_total"]
+	if prison_total < 0:
+		prison_total = Prison_Time_Hash[prison_total]
+	return prison_total
+
+def FJC_disp_hash(row):
+	return(Disp_Code_Hash[row["top_disp"]])
+
+def create_child_master():
+
+	fjc_db = openIDB_connection()
+	sql_file = "child_exploit_key_j.sql"
+	sql= open(sql_file).read()
+	resultDF = executeQuery_returnDF(fjc_db, sql)
+	fjc_db.close()
+
+	#just make it a few less as I develop the logic
+	start = 0
+	end =  len(resultDF)
+	resultDF = resultDF[start:end]
+	resultDF["prison_total"] = resultDF.apply(FJC_prison_hash, axis=1)
+	resultDF["top_disp"]= resultDF.apply(FJC_disp_hash, axis=1)
+
+
+	#Kludgy but it works - get results back as a DF and then apply to resultsDC
+	temp = resultDF.apply(getChild_RECAP_Row, axis=1)
+	temp2 = pd.DataFrame(temp.values.tolist(), index=temp.index)
+
+	resultDF['pacer_docket'] = temp2[0]
+	resultDF['recap_id'] = temp2[1]
+	resultDF['assigned_to']=temp2[2]
+	resultDF['case_name']=temp2[3]
+	resultDF['def_name']=temp2[4]
+	resultDF['r_charges_total']=temp2[5]
+	resultDF['r_convictions_total']=temp2[6]
+	resultDF['r_top_charge']=temp2[7]
+	resultDF['r_top_disp']=temp2[8]
+	resultDF['r_docket_link']=temp2[9]
+
+	#result_list =[pacer_docket, recap_id, assigned_to, case_name, defInfo['def_name'], defInfo['recap_total_charges'],  defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp']]
+
+	#resultDF.apply(getChild_RECAP_Row, axis=1)
+
+	#TESING
+	resultDF.to_csv("child_exploit_v2.0.csv")
+
+
 def test_get_child_keys():
 
 	fjc_db = openIDB_connection()
@@ -434,7 +544,8 @@ def main():
 	#Test integrating other file
 	#old_main()
 
-	test_get_child_keys()
+	#test_get_child_keys()
+	create_child_master()
 
 # CALL MAIN
 main()

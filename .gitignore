@@ -5,3 +5,4 @@ __pycache__
 clvenv
 fpd_recap.py
 passwords.py
+*.csv
