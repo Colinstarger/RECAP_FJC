@@ -6,3 +6,4 @@ clvenv
 fpd_recap.py
 passwords.py
 *.csv
+*.xlsx

@@ -358,6 +358,9 @@ def scrapeCharges(partyURL):
 	print("RESULTS TABLE\n", output_table)
 	return(output_table)
 
+def getChild_RECAP_Attorneys_Row(row):
+	return(getLeadAttorneys(row["recap_id"])) 
+
 def getChild_RECAP_Row(row):
 	#print ("looking at", row.name, "with key", row["def_key"])
 	index = row.name
@@ -406,6 +409,82 @@ def FJC_prison_hash(row):
 def FJC_disp_hash(row):
 	return(Disp_Code_Hash[row["top_disp"]])
 
+def getLeadAttorneys(recap_docket):
+	#first get the parties
+	endpoint="https://www.courtlistener.com/api/rest/v3/parties/?docket="+str(recap_docket)
+	myJson=getJSONfromAPI_Auth(endpoint)
+	results = myJson["results"]
+
+	#plaintiff aka prosecution first
+	lead_prosecutor = "not found"
+	for result in results:
+		if (result["party_types"][0]["name"]=="Plaintiff"):
+			attorneys = result["attorneys"]
+			for attorney in reversed(attorneys):
+				if (attorney['role']==2):
+					#found lead, now get name
+					atty_endpoint = attorney["attorney"]
+					lead_prosecutor = getJSONfromAPI_Auth(atty_endpoint)["name"]
+					break
+			break
+	#print("Found lead prosecutor", lead_prosecutor)
+	lead_defense = "not found"
+	for result in results:
+		if (result["party_types"][0]["name"]=="Defendant"):
+			attorneys = result["attorneys"]
+			for attorney in reversed(attorneys):
+				if (attorney['role']==2):
+					#found lead, now get name
+					atty_endpoint = attorney["attorney"]
+					lead_defense = getJSONfromAPI_Auth(atty_endpoint)["name"]
+					break
+			break
+	#print("Found lead defense", lead_defense)
+	if (lead_defense=="not found" and lead_prosecutor!="not found"):
+		for result in results:
+			if (result["party_types"][0]["name"]=="Defendant"):
+				attorneys = result["attorneys"]
+				for attorney in reversed(attorneys):
+					if (attorney['role']==6):
+					#found lead, now get name
+						atty_endpoint = attorney["attorney"]
+						lead_defense = getJSONfromAPI_Auth(atty_endpoint)["name"]
+						break
+				break
+
+	if (lead_defense=="not found" and lead_prosecutor!="not found"):
+		for result in results:
+			if (result["party_types"][0]["name"]=="Defendant"):
+				attorneys = result["attorneys"]
+				for attorney in attorneys:
+					if (attorney['role']==1):
+					#found lead, now get name
+						atty_endpoint = attorney["attorney"]
+						lead_defense = getJSONfromAPI_Auth(atty_endpoint)["name"]
+						break
+				break
+
+	return ([lead_prosecutor, lead_defense])
+
+
+
+def addProsecutorDefense(loadfile="child_exploit_v2.0.csv", outputfile="child_exploit_v2.1.csv"):
+
+	resultDF = pd.read_csv(loadfile)
+	#just make it a few less as I develop the logic
+	start = 0
+	end =  len(resultDF)
+	resultDF = resultDF[start:end]
+
+	temp = resultDF.apply(getChild_RECAP_Attorneys_Row, axis=1)
+	temp2 = pd.DataFrame(temp.values.tolist(), index=temp.index)
+
+	resultDF['prosecutor_lead'] = temp2[0]
+	resultDF['defense_lead'] = temp2[1]
+
+	resultDF.to_csv(outputfile, index=False)
+
+
 def create_child_master():
 
 	fjc_db = openIDB_connection()
@@ -437,12 +516,13 @@ def create_child_master():
 	resultDF['r_top_disp']=temp2[8]
 	resultDF['r_docket_link']=temp2[9]
 
+	
 	#result_list =[pacer_docket, recap_id, assigned_to, case_name, defInfo['def_name'], defInfo['recap_total_charges'],  defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp']]
 
 	#resultDF.apply(getChild_RECAP_Row, axis=1)
 
 	#TESING
-	resultDF.to_csv("child_exploit_v2.0.csv")
+	resultDF.to_csv("child_exploit_v2.0.csv", index=False)
 
 
 def test_get_child_keys():
@@ -545,7 +625,10 @@ def main():
 	#old_main()
 
 	#test_get_child_keys()
-	create_child_master()
+	#create_child_master()
+	#getLeadAttorneys(16914442)
+	addProsecutorDefense()
+
 
 # CALL MAIN
 main()
