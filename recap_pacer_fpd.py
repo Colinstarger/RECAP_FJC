@@ -90,6 +90,34 @@ CP_Data_Hash = {
 	
 }
 
+CP_E_Data_Hash = {
+	
+	11:1,
+	14:0,
+	18:0,
+	19:0,
+	20:1,
+	21:0,
+	23:1,
+	24:1,
+	25:1,
+	26:1,
+	27:1,
+	29:0,
+	35:2,
+	36:0,
+	39:1,
+	40:1,
+	41:0,
+	42:1,
+	44:1,
+	45:1,
+	47:1,
+	48:1,
+	50:1,
+	51:1
+}
+
 def getJSONfromAPI_Auth(api_url):
 	r = requests.get(api_url, headers={'Authorization': 'Token '+cl_auth_token})
 	return r.json()
@@ -252,35 +280,6 @@ def getDefendantInfo_RECAP(recap_docket):
 	return defInfo		
 
 
-
-def getParties_RECAP(recap_docket):
-	
-	endpoint="https://www.courtlistener.com/api/rest/v3/parties/?docket="+recap_docket
-	print("Looking for this endpoint", endpoint)
-	myJson=getJSONfromAPI_Auth(endpoint)
-	print("PARTIES JSON")
-	print(json.dumps(myJson))
-	print("-----\n")
-	#endpoint="https://www.courtlistener.com/api/rest/v3/attorneys/?docket="+recap_docket
-	#print("Looking for this endpoint", endpoint)
-	#myJson=getJSONfromAPI_Auth(endpoint)
-	#print("ATTORNEYS JSON")
-	#print(myJson)
-	"""
-	endpoint="https://www.courtlistener.com/api/rest/v3/dockets/?id="+recap_docket
-	print("Looking for this endpoint", endpoint)
-	myJson=getJSONfromAPI_Auth(endpoint)
-	print("DOCKET JSON")
-	print(myJson)
-	print("DOES THIS WORK")
-	results = myJson['results']
-	first = results[0]
-	assignd = first['assigned_to_str']
-	print(assignd)
-	"""
-
-
-
 def createRecapCheckList(inputfile, outputfile="recap_results.csv", slice_start=0, slice_end=0):
 
 	inDF = pd.read_csv(inputfile)
@@ -366,6 +365,7 @@ def getChild_RECAP_Row(row):
 	index = row.name
 	key = row["def_key"]
 	disag = disagg_fjc_deflogky(key)
+	defno=disag["defno"]
 	pacer_docket = convertFJCSQL_to_Docket(disag['office'], disag['docket'])
 	recap_info = checkDocket_in_MDD_RECAP_Fullinfo(pacer_docket)
 	if (recap_info[0]=="YES"):
@@ -373,12 +373,21 @@ def getChild_RECAP_Row(row):
 		defInfo="" #will get defined in the function
 
 		if (count>1):
-			hash_results = recap_info[5]['results'][CP_Data_Hash[index]]
+			#This was testing - I still think the best is to use latest but its hard
+			#print("buddy - you got to CP_Data_Hash this index", index, "it has", count, "rows", pacer_docket)
+			#print("FJC info - top convict", row["top_convict"], "prison_total", row["prison_total"])
+			#print("scour this buddy")
+			#print("https://www.courtlistener.com/api/rest/v3/dockets?court=mdd&docket_number="+pacer_docket)
+
+			#This was for J
+			#hash_results = recap_info[5]['results'][CP_Data_Hash[index]]
+			hash_results = recap_info[5]['results'][CP_E_Data_Hash[index]]
 			recap_id = hash_results['id']
 			assigned_to = hash_results['assigned_to_str']
 			case_name = hash_results['case_name']
 			defInfo = getDefendantInfo_RECAP(recap_id)
 			docket_link = "www.courtlistener.com"+hash_results['absolute_url']
+			
 		else: 
 			recap_id = recap_info[2]
 			assigned_to = recap_info[3]
@@ -386,10 +395,11 @@ def getChild_RECAP_Row(row):
 			defInfo = getDefendantInfo_RECAP(recap_id)
 			docket_link = "www.courtlistener.com"+recap_info[5]['results'][0]['absolute_url']
 						
-		#print("FJC def no", defno, file_date, disp_date, top_charge, top_disp, top_convict, prison_total)
+		print("Index", index, "FJC def no", defno)
 		#print(pacer_docket, recap_id, case_name, assigned_to)
 		#print( "RCP Num charges", defInfo['recap_total_charges'], "Convictions", defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'], "\n")
 
+		#DISABLE DURING TESTING
 		result_list =[pacer_docket, recap_id, assigned_to, case_name, defInfo['def_name'], defInfo['recap_total_charges'],  defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'], docket_link]
 		return result_list
 
@@ -467,7 +477,6 @@ def getLeadAttorneys(recap_docket):
 	return ([lead_prosecutor, lead_defense])
 
 
-
 def addProsecutorDefense(loadfile="child_exploit_v2.0.csv", outputfile="child_exploit_v2.1.csv"):
 
 	resultDF = pd.read_csv(loadfile)
@@ -488,12 +497,14 @@ def addProsecutorDefense(loadfile="child_exploit_v2.0.csv", outputfile="child_ex
 def create_child_master():
 
 	fjc_db = openIDB_connection()
-	sql_file = "child_exploit_key_j.sql"
+	#sql_file = "child_exploit_key_j.sql"
+	sql_file = "child_exploit_key_e.sql"
 	sql= open(sql_file).read()
 	resultDF = executeQuery_returnDF(fjc_db, sql)
 	fjc_db.close()
 
 	#just make it a few less as I develop the logic
+	print("This many results", len(resultDF))
 	start = 0
 	end =  len(resultDF)
 	resultDF = resultDF[start:end]
@@ -516,14 +527,26 @@ def create_child_master():
 	resultDF['r_top_disp']=temp2[8]
 	resultDF['r_docket_link']=temp2[9]
 
-	
 	#result_list =[pacer_docket, recap_id, assigned_to, case_name, defInfo['def_name'], defInfo['recap_total_charges'],  defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp']]
 
-	#resultDF.apply(getChild_RECAP_Row, axis=1)
+	#Save Results
+	#resultDF = reorderColumns(resultDF)
+	resultDF.to_csv("child_exploit_E.v1.0.csv", index=False)
 
-	#TESING
-	resultDF.to_csv("child_exploit_v2.0.csv", index=False)
+def reorderColumns(inputDF):
 
+	#def_key	top_charge	top_disp	top_convict	prison_total	file_date	disp_date	pacer_docket	recap_id	assigned_to	case_name	def_name	r_charges_total	r_convictions_total	r_top_charge	r_top_disp	r_docket_link	prosecutor_lead	defense_lead
+
+	outputDF = ""
+	numCols = len(inputDF.columns)
+
+	if (numCols==19):
+		outputDF=inputDF[["case_name", "def_name", "pacer_docket", "assigned_to", "prosecutor_lead", "defense_lead", "file_date", "top_charge", "r_top_charge", "r_charges_total", "r_convictions_total", "disp_date", "top_disp", "top_convict", "r_top_disp", "prison_total", "r_docket_link", "recap_id", "def_key"]]
+	elif (numCols==20):
+		outputDF=inputDF[["case_name", "def_name", "pacer_docket", "assigned_to", "prosecutor_lead", "defense_lead", "file_date", "top_charge", "r_top_charge", "r_charges_total", "r_convictions_total", "fjc_status", "disp_date", "top_disp", "top_convict", "r_top_disp", "prison_total", "r_docket_link", "recap_id", "def_key"]]
+	else:
+		print(numCols, "is not a state I can deal with")
+	return (outputDF)
 
 def test_get_child_keys():
 
@@ -534,8 +557,9 @@ def test_get_child_keys():
 	fjc_db.close()
 
 	#just make it a few less as I develop the logic
-	start = 119
-	end =  130 #len(resultDF)
+	print("This is how many pending cases there are", len(resultDF))
+	start = 9
+	end =  12 #len(resultDF)
 	resultDF = resultDF[start:end]
 
 	#This is a goofy non-Pythonic way of looping through
@@ -579,9 +603,6 @@ def test_get_child_keys():
 		else:
 			print("Pacer docket", pacer_docket, "not found in RECAP")	
 	
-
-
-
 
 def main():
 
@@ -627,7 +648,32 @@ def main():
 	#test_get_child_keys()
 	#create_child_master()
 	#getLeadAttorneys(16914442)
-	addProsecutorDefense()
+	#addProsecutorDefense("child_exploit_E.v1.0.csv", "child_exploit_E.v1.1.csv")
+
+	#myDF= pd.read_csv("child_exploit_E.v1.1.csv")
+	#myDF = reorderColumns(myDF)
+	#myDF.to_csv("child_exploit_E.v1.3.csv", index=False)
+
+	closedDF = pd.read_csv("child_exploit_v2.2.csv")
+	print("Len of closed = ", len(closedDF), "with", len(closedDF.columns), "columns")
+	closedDF["fjc_status"] = "Closed"
+	
+
+	pendingDF = pd.read_csv("child_exploit_E.v1.3.csv")
+	pendingDF["fjc_status"] = "Pending"
+	pendingDF.index += 502
+
+	concat_list = [closedDF, pendingDF]
+	finalDF = pd.concat(concat_list)
+	print("Len of final = ", len(finalDF), "with", len(finalDF.columns), "columns")
+	finalDF = reorderColumns(finalDF)
+	finalDF.to_csv("child_exploit_v3.0.csv", index=False)
+
+
+
+
+
+
 
 
 # CALL MAIN
