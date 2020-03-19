@@ -1,6 +1,8 @@
 	#python3
 import requests
 import pandas as pd
+from pandas import ExcelWriter #note also need to pip3 install xlrd & openpyxl
+from pandas import ExcelFile
 from bs4 import BeautifulSoup as bs
 import json
 from passwords import *
@@ -550,6 +552,10 @@ def reorderColumns(inputDF):
 
 def test_get_child_keys():
 
+	#This function is not used anymore -- instead using Pandas rows
+	#See create_child_master() - Just keeping to remind me how to loop through in
+	#non-pythonic but easy to understand way
+
 	fjc_db = openIDB_connection()
 	sql_file = "child_exploit_key_j.sql"
 	sql= open(sql_file).read()
@@ -564,6 +570,7 @@ def test_get_child_keys():
 
 	#This is a goofy non-Pythonic way of looping through
 	#Just doing for development; will put into Pandas row function when ready
+
 	for x in range(start, end):
 		file_date = resultDF.at[x,"file_date"]
 		disp_date = resultDF.at[x,"disp_date"]
@@ -602,7 +609,27 @@ def test_get_child_keys():
 
 		else:
 			print("Pacer docket", pacer_docket, "not found in RECAP")	
-	
+
+
+def addNickColumns():
+
+	#First Load up Excel Sheet
+	mainDF = pd.read_excel('child_exploit_v3.0.xlsx', sheet_name='Main')
+	mainDF["file_date"]=mainDF["file_date"].dt.date
+	mainDF["disp_date"]=mainDF["disp_date"].dt.date
+	mainDF["Minor victim"]=""
+	mainDF["Num victims"]=""
+	mainDF["Victim ages"]=""
+	mainDF["Sexual contact"]=""
+	mainDF["Plea link"]=""
+
+	#Don't have a key in common will just do by hand - below was from when I thought I had key
+	#nickDF = pd.read_excel('CHILD_EXPLOITATION.xlsx', sheet_name='DOCS')
+	#subDF = nickDF[nickDF["Minor Victim (Y/N)"] == ("Y" or "N")]
+
+	mainDF.to_excel("child_exploit_v3.0.xlsx", index=False)
+
+
 
 def main():
 
@@ -620,7 +647,6 @@ def main():
 	#outputfile="wirefraud_recap_results.csv"
 	#createRecapCheckList(target_file, outputfile)
 
-
 	#checkList_Fetch_Missing go through a checklist created using CreateRecapCheckList
 	#And get the missing items from PACER
 	#When done, just re-run 
@@ -629,21 +655,6 @@ def main():
 	#target_file = "wirefraud_recap.csv"
 	#checkList_Fetch_Missing(target_file)
 
-
-	#SCRAPER TEST - Getting Parties
-	#testURL = "https://www.courtlistener.com/docket/16901415/parties/united-states-v-koontz/"
-	#testURL = "https://www.courtlistener.com/docket/4937257/parties/united-states-v-holiday/"
-	#returnTable = scrapeCharges(testURL)
-	#testDF = pd.DataFrame(returnTable[1:], columns=returnTable[0])
-	#print(testDF)
-
-	#Parties test
-	#docket ="1:15-cr-00131"
-	#recap_docket = "13264089"
-	#getParties_RECAP(recap_docket)
-
-	#Test integrating other file
-	#old_main()
 
 	#test_get_child_keys()
 	#create_child_master()
@@ -654,25 +665,22 @@ def main():
 	#myDF = reorderColumns(myDF)
 	#myDF.to_csv("child_exploit_E.v1.3.csv", index=False)
 
-	closedDF = pd.read_csv("child_exploit_v2.2.csv")
-	print("Len of closed = ", len(closedDF), "with", len(closedDF.columns), "columns")
-	closedDF["fjc_status"] = "Closed"
+	#closedDF = pd.read_csv("child_exploit_v2.2.csv")
+	#print("Len of closed = ", len(closedDF), "with", len(closedDF.columns), "columns")
+	#closedDF["fjc_status"] = "Closed"
 	
 
-	pendingDF = pd.read_csv("child_exploit_E.v1.3.csv")
-	pendingDF["fjc_status"] = "Pending"
-	pendingDF.index += 502
+	#pendingDF = pd.read_csv("child_exploit_E.v1.3.csv")
+	#pendingDF["fjc_status"] = "Pending"
+	#pendingDF.index += 502
 
-	concat_list = [closedDF, pendingDF]
-	finalDF = pd.concat(concat_list)
-	print("Len of final = ", len(finalDF), "with", len(finalDF.columns), "columns")
-	finalDF = reorderColumns(finalDF)
-	finalDF.to_csv("child_exploit_v3.0.csv", index=False)
+	#concat_list = [closedDF, pendingDF]
+	#finalDF = pd.concat(concat_list)
+	#print("Len of final = ", len(finalDF), "with", len(finalDF.columns), "columns")
+	#finalDF = reorderColumns(finalDF)
+	#finalDF.to_csv("child_exploit_v3.0.csv", index=False)
 
-
-
-
-
+	addNickColumns()
 
 
 
