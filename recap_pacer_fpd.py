@@ -120,6 +120,54 @@ CP_E_Data_Hash = {
 	51:1
 }
 
+
+recapDefExceptHash = {
+	
+	"12103018003":1,
+	"16922452005":1,
+	"12104771006":1,
+	"12103764003":1,
+	"6259405001":0,
+	"16922480007":2,
+	"16922491001":2,
+	"12982767003":1,
+	"12780294002":1,
+	"4286148003":1,
+	"16174830003":1,
+	"5269796002":1,
+	"12780307004": 1,
+	"6224282001": 0,
+	"4512786002":1,
+	"6233798001":0,
+	"13363156005":1,
+	"8379589002":1
+}
+
+pacer_docket_hash = {
+	"1:08-cr-00585":0,
+	"1:10-cr-00498":1,
+	"8:09-cr-00213":0,
+	"1:09-cr-00547":0,
+	"8:10-cr-00596":0,
+	"1:11-cr-00600":0,
+	"8:10-cr-00761":0,
+	"1:13-cr-00568":0,
+	"8:12-cr-00288":0,
+	"1:11-cr-00696":0,
+	"1:13-cr-00619":0,
+	"1:15-cr-00302":0,
+	"1:15-cr-00565":0,
+	"1:16-cr-00416":0,
+	"8:16-cr-00225":0,
+	"1:14-cr-00600":0,
+	"8:16-cr-00608":0,
+	"8:17-cr-00364":0,
+	"8:17-cr-00064":0
+}
+
+Charge_Index_Exception = {
+	"4286107001":1
+}
 def getJSONfromAPI_Auth(api_url):
 	r = requests.get(api_url, headers={'Authorization': 'Token '+cl_auth_token})
 	return r.json()
@@ -228,6 +276,84 @@ def checkDocket_in_MDD_RECAP_Fullinfo(docket):
 		return ["YES", count, recap_id, assigned_to, case_name, myJson]
 
 
+def getDefendantInfo_RECAP_DefNo(recap_docket, defNo):
+
+	endpoint="https://www.courtlistener.com/api/rest/v3/parties/?docket="+str(recap_docket)
+	#print("Looking for this endpoint", endpoint)
+	myJson=getJSONfromAPI_Auth(endpoint)
+	count = myJson["count"]
+	results = myJson["results"]
+	def_name = "missing"
+	recap_top_charge = "missing"
+	recap_top_disp = "missing"
+	recap_total_charges = -1
+	recap_total_convictions = -1
+
+	if count>0:
+		#def_index = count -1
+		def_index = count - int(defNo)
+
+		if def_index >= 20:
+			#For those rare more than 20 defendant cases
+			#I am going to assume there are no more than 40 defendant cases
+			print("Funky more than 20 defendant case")
+			nextEndpoint = myJson["next"]
+			myJson=getJSONfromAPI_Auth(nextEndpoint)
+			results = myJson["results"]
+			def_index = def_index-20
+			print("Going to page2 and will look at index", def_index)
+
+
+
+		#This will be the by-hand check
+		defNoExcept = str(recap_docket)+defNo
+		if defNoExcept in recapDefExceptHash:
+			def_index = recapDefExceptHash[defNoExcept]
+
+		if (def_index<0):
+			#The algorithm didn't work
+			print("Issue with recap_docket", recap_docket, "Defno", defNo, "resetting to 0!!")
+			def_index=0
+
+		#Testing
+		print("Looking at def_index", def_index, "for recap_docket",recap_docket)
+		def_name = results[def_index]["name"]
+		
+
+		try:
+			charge_index = 0
+			if (defNoExcept in Charge_Index_Exception):
+				charge_index = Charge_Index_Exception[defNoExcept]
+			#charges = results[def_index]["party_types"][0]["criminal_counts"]
+			charges = results[def_index]["party_types"][charge_index]["criminal_counts"]
+			#print("found charges", charges)
+			recap_total_charges = len(charges)
+			dismissed = 0
+			for charge in charges:
+				if (charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE", 'ACQUITTAL')):
+					dismissed += 1
+			recap_total_convictions = recap_total_charges-dismissed
+			if (recap_total_convictions == recap_total_charges or recap_total_convictions==0):
+				recap_top_charge= charges[-1]["name"]
+				recap_top_disp = charges[-1]["disposition"]
+			else:
+				for charge in reversed(charges):
+					if not(charge['disposition'].upper() in ("DISMISSED", "DISMISSED WITHOUT PREJUDICE", "ACQUITTAL")):
+						recap_top_charge= charge["name"]
+						recap_top_disp = charge["disposition"]
+						break;
+		except:
+			print("**\nNo charges found for ", str(recap_docket)+defNo, "at def_index", def_index,"\n**")
+
+	defInfo = {"def_name":def_name, 
+				"recap_top_charge": recap_top_charge,
+				"recap_top_disp": recap_top_disp,
+				"recap_total_charges": recap_total_charges,
+				"recap_total_convictions": recap_total_convictions
+				}
+	return defInfo		
+
+
 def getDefendantInfo_RECAP(recap_docket):
 
 	endpoint="https://www.courtlistener.com/api/rest/v3/parties/?docket="+str(recap_docket)
@@ -310,6 +436,13 @@ def fetch_to_RECAP(docket_id, court="mdd"):
 	r = requests.post(api_url, data=data, headers={'Authorization': 'Token '+cl_auth_token})
 	return r.json()
 
+def fetch_to_RECAP_PACERID(pacer_id, court="mdd"):
+	api_url= "https://www.courtlistener.com/api/rest/v3/recap-fetch/"
+	data = {'request_type':1, 'pacer_username': pacer_username, 'pacer_password':pacer_password, 'pacer_case_id':pacer_id, 'court':court, 'show_parties_and_counsel': 'True', "show_terminated_parties": "True"}
+	r = requests.post(api_url, data=data, headers={'Authorization': 'Token '+cl_auth_token})
+	return r.json()
+
+
 def checkRow_Fetch_Missing(row):
 	return(checkDocket_Fetch_Missing(row['MDD_DOCKET']))
 
@@ -332,7 +465,7 @@ def checkList_Fetch_Missing(csvfile, slice_start=0, slice_end=0):
 		
 
 def scrapeCharges(partyURL):
-
+	#This is a totally unnecessary function now that API is in place
 	page = requests.get(partyURL)
 	soup = bs(page.content, 'html.parser')
 	table = soup.find('table')
@@ -363,6 +496,7 @@ def getChild_RECAP_Attorneys_Row(row):
 	return(getLeadAttorneys(row["recap_id"])) 
 
 def getChild_RECAP_Row(row):
+	#This was my first pass at this and this is ONLY FOR CHILD data
 	#print ("looking at", row.name, "with key", row["def_key"])
 	index = row.name
 	key = row["def_key"]
@@ -398,6 +532,62 @@ def getChild_RECAP_Row(row):
 			docket_link = "www.courtlistener.com"+recap_info[5]['results'][0]['absolute_url']
 						
 		print("Index", index, "FJC def no", defno)
+		#print(pacer_docket, recap_id, case_name, assigned_to)
+		#print( "RCP Num charges", defInfo['recap_total_charges'], "Convictions", defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'], "\n")
+
+		#DISABLE DURING TESTING
+		result_list =[pacer_docket, recap_id, assigned_to, case_name, defInfo['def_name'], defInfo['recap_total_charges'],  defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'], docket_link]
+		return result_list
+
+	else:
+		#print("Pacer docket", pacer_docket, "not found in RECAP")	
+
+		result_list =[pacer_docket, "nir", "nir", "nir", "nir", "nir",  "nir", "nir", "nir", "nir"]
+		return result_list
+
+def getChild_RECAP_Row_Generic(row):
+	#Second pass at this -- will try to make generic for wirefraud and bank robbery
+	
+	#Try to avoid using the index since that is too dependent on the data set
+	#print ("looking at", row.name, "with key", row["def_key"])
+	#index = row.name
+	
+	key = row["def_key"]
+	disag = disagg_fjc_deflogky(key)
+	defno=disag["defno"]
+	pacer_docket = convertFJCSQL_to_Docket(disag['office'], disag['docket'])
+	recap_info = checkDocket_in_MDD_RECAP_Fullinfo(pacer_docket)
+	if (recap_info[0]=="YES"):
+		count = recap_info[1]
+		defInfo="" #will get defined in the function
+
+		if (count>1):
+			#Testing - will use latest for now but then must check
+			print("Warning multiple results found for", pacer_docket, "with FJC info - top convict", row["top_convict"], "prison_total", row["prison_total"])
+			print("https://www.courtlistener.com/api/rest/v3/dockets?court=mdd&docket_number="+pacer_docket)
+
+			#In child used an index-based hash. Shift to pacer_docket hash
+			result_index = count-1 #using this as default
+			if (pacer_docket in pacer_docket_hash):
+				result_index = pacer_docket_hash[pacer_docket]
+			
+			#hash_results = recap_info[5]['results'][CP_E_Data_Hash[index]]
+			hash_results = recap_info[5]['results'][result_index]
+			recap_id = hash_results['id']
+			assigned_to = hash_results['assigned_to_str']
+			case_name = hash_results['case_name']
+			defInfo = getDefendantInfo_RECAP_DefNo(recap_id, defno)
+			docket_link = "www.courtlistener.com"+hash_results['absolute_url']
+			
+		else:
+			#This is assuming a single result 
+			recap_id = recap_info[2]
+			assigned_to = recap_info[3]
+			case_name = recap_info[4]
+			defInfo = getDefendantInfo_RECAP_DefNo(recap_id, defno)
+			docket_link = "www.courtlistener.com"+recap_info[5]['results'][0]['absolute_url']
+						
+		print("Searched", pacer_docket, "FJC def no", defno)
 		#print(pacer_docket, recap_id, case_name, assigned_to)
 		#print( "RCP Num charges", defInfo['recap_total_charges'], "Convictions", defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'], "\n")
 
@@ -535,6 +725,51 @@ def create_child_master():
 	#resultDF = reorderColumns(resultDF)
 	resultDF.to_csv("child_exploit_E.v1.0.csv", index=False)
 
+def create_wirefraud_master():
+
+	fjc_db = openIDB_connection()
+	#Unlike Child Exploit (round 1), I will deal with E/J cases together
+	sql_file = "wirefraud_key.sql"
+
+	sql= open(sql_file).read()
+	resultDF = executeQuery_returnDF(fjc_db, sql)
+	fjc_db.close()
+
+	#Option to narrow results during development
+	print("*****\n*****\n")
+	print("This many results", len(resultDF))
+	start = 0
+	end =  len(resultDF) 
+	resultDF = resultDF[start:end]
+	resultDF["prison_total"] = resultDF.apply(FJC_prison_hash, axis=1)
+	resultDF["top_disp"]= resultDF.apply(FJC_disp_hash, axis=1)
+
+	
+	#Kludgy but it works - get results back as a DF and then apply to resultsDC
+	temp = resultDF.apply(getChild_RECAP_Row_Generic, axis=1)
+	temp2 = pd.DataFrame(temp.values.tolist(), index=temp.index)
+
+	resultDF['pacer_docket'] = temp2[0]
+	resultDF['recap_id'] = temp2[1]
+	resultDF['assigned_to']=temp2[2]
+	resultDF['case_name']=temp2[3]
+	resultDF['def_name']=temp2[4]
+	resultDF['r_charges_total']=temp2[5]
+	resultDF['r_convictions_total']=temp2[6]
+	resultDF['r_top_charge']=temp2[7]
+	resultDF['r_top_disp']=temp2[8]
+	resultDF['r_docket_link']=temp2[9]
+
+	
+	#Now Get Defendant Info
+	#result_list =[pacer_docket, recap_id, assigned_to, case_name, defInfo['def_name'], defInfo['recap_total_charges'],  defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp']]
+
+	#Save Results
+	#resultDF = reorderColumns(resultDF)
+	
+	resultDF.to_csv("wirefraud.v2.0.csv", index=False)
+
+
 def reorderColumns(inputDF):
 
 	#def_key	top_charge	top_disp	top_convict	prison_total	file_date	disp_date	pacer_docket	recap_id	assigned_to	case_name	def_name	r_charges_total	r_convictions_total	r_top_charge	r_top_disp	r_docket_link	prosecutor_lead	defense_lead
@@ -612,7 +847,7 @@ def test_get_child_keys():
 
 
 def addNickColumns():
-
+	#This is specific to the child data set
 	#First Load up Excel Sheet
 	mainDF = pd.read_excel('child_exploit_v3.0.xlsx', sheet_name='Main')
 	mainDF["file_date"]=mainDF["file_date"].dt.date
@@ -632,10 +867,6 @@ def addNickColumns():
 
 
 def main():
-
-	#Proof of concept check docket
-	#docket="1:05-cr-00232"
-	#print(docket, "in RECAP=", checkDocket_in_RECAP(docket))
 
 	#These create RECAP lists with dockets from a FJC list TARGET FILE to an OUTPUT FILE
 	#All the target files are created by SQL Queries to FJC DB
@@ -680,9 +911,19 @@ def main():
 	#finalDF = reorderColumns(finalDF)
 	#finalDF.to_csv("child_exploit_v3.0.csv", index=False)
 
-	addNickColumns()
+	#addNickColumns()
+
+	# STARTING WIREFRAUD
+	#create_wirefraud_master()
+	#addProsecutorDefense("wirefraud.v2.0.csv", "wirefraud.v2.1.csv")
+
+	finalDF = pd.read_csv("wirefraud.v2.1.csv")
+	finalDF = reorderColumns(finalDF)
+	finalDF.to_csv("wirefraud.v2.2.csv", index=False)
 
 
+	#print(fetch_to_RECAP_PACERID("164337"))
+	#print(fetch_to_RECAP_PACERID("379024"))
 
 # CALL MAIN
 main()
