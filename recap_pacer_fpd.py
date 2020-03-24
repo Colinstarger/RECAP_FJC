@@ -1,4 +1,4 @@
-	#python3
+#python3
 import requests
 import pandas as pd
 from pandas import ExcelWriter #note also need to pip3 install xlrd & openpyxl
@@ -46,80 +46,6 @@ Prison_Time_Hash = {
 }
 
 #This is to deal with bad recap data and multiple defendants. There does not seem to be a pattern to just fixing the items by hand
-
-CP_Recap_Exception_Hash = {
-	
-	12102991: 0,
-	4954750: 0,
-	11939605: 0,
-	16901278:0,
-	16914462:2,
-	6280873: 0,
-	6287198:0,
-	6306179:0
-}
-
-CP_Charge_Index_Exception = {
-	
-	4285619: 1
-}
-CP_Data_Hash = {
-
-	41: 1,
-	120: 0,
-	121: 1,
-	125: 3, # still bad
-	126: 2,
-	127: 1,
-	128: 0,
-	192: 0, #no good one here
-	248: 0, #no good one here
-	302: 4,
-	303: 2,
-	304: 1,
-	305: 3,
-	306: 0,
-	351: 0, #no good one here
-	416: 1,
-	462: 0,
-	469: 0,
-	477: 1,
-	478: 0,
-	485: 0,
-	495: 0,
-	497: 0,
-	498: 0
-	
-}
-
-CP_E_Data_Hash = {
-	
-	11:1,
-	14:0,
-	18:0,
-	19:0,
-	20:1,
-	21:0,
-	23:1,
-	24:1,
-	25:1,
-	26:1,
-	27:1,
-	29:0,
-	35:2,
-	36:0,
-	39:1,
-	40:1,
-	41:0,
-	42:1,
-	44:1,
-	45:1,
-	47:1,
-	48:1,
-	50:1,
-	51:1
-}
-
 
 recapDefExceptHash = {
 	
@@ -505,86 +431,9 @@ def checkList_Fetch_Missing(csvfile, slice_start=0, slice_end=0):
 	return True
 		
 
-def scrapeCharges(partyURL):
-	#This is a totally unnecessary function now that API is in place
-	page = requests.get(partyURL)
-	soup = bs(page.content, 'html.parser')
-	table = soup.find('table')
-	#print(table.prettify())
-	rows = table.find_all('tr')
-
-	output_table = []
-
-	for index, row in enumerate(rows):
-		newrow=[]
-		if (index==0):
-			headers = row.find_all('th')
-			for header in headers:
-				text = header.get_text()
-				if (text==''):
-					text='Type'
-				newrow.append(text)
-		else:
-			cells = row.find_all('td')
-			for cell in cells:
-				newrow.append(cell.get_text())
-		output_table.append(newrow)
-
-	print("RESULTS TABLE\n", output_table)
-	return(output_table)
-
 def getChild_RECAP_Attorneys_Row(row):
 	return(getLeadAttorneys(row["recap_id"])) 
 
-def getChild_RECAP_Row(row):
-	#This was my first pass at this and this is ONLY FOR CHILD data
-	#print ("looking at", row.name, "with key", row["def_key"])
-	index = row.name
-	key = row["def_key"]
-	disag = disagg_fjc_deflogky(key)
-	defno=disag["defno"]
-	pacer_docket = convertFJCSQL_to_Docket(disag['office'], disag['docket'])
-	recap_info = checkDocket_in_MDD_RECAP_Fullinfo(pacer_docket)
-	if (recap_info[0]=="YES"):
-		count = recap_info[1]
-		defInfo="" #will get defined in the function
-
-		if (count>1):
-			#This was testing - I still think the best is to use latest but its hard
-			#print("buddy - you got to CP_Data_Hash this index", index, "it has", count, "rows", pacer_docket)
-			#print("FJC info - top convict", row["top_convict"], "prison_total", row["prison_total"])
-			#print("scour this buddy")
-			#print("https://www.courtlistener.com/api/rest/v3/dockets?court=mdd&docket_number="+pacer_docket)
-
-			#This was for J
-			#hash_results = recap_info[5]['results'][CP_Data_Hash[index]]
-			hash_results = recap_info[5]['results'][CP_E_Data_Hash[index]]
-			recap_id = hash_results['id']
-			assigned_to = hash_results['assigned_to_str']
-			case_name = hash_results['case_name']
-			defInfo = getDefendantInfo_RECAP(recap_id)
-			docket_link = "www.courtlistener.com"+hash_results['absolute_url']
-			
-		else: 
-			recap_id = recap_info[2]
-			assigned_to = recap_info[3]
-			case_name = recap_info[4]
-			defInfo = getDefendantInfo_RECAP(recap_id)
-			docket_link = "www.courtlistener.com"+recap_info[5]['results'][0]['absolute_url']
-						
-		print("Index", index, "FJC def no", defno)
-		#print(pacer_docket, recap_id, case_name, assigned_to)
-		#print( "RCP Num charges", defInfo['recap_total_charges'], "Convictions", defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'], "\n")
-
-		#DISABLE DURING TESTING
-		result_list =[pacer_docket, recap_id, assigned_to, case_name, defInfo['def_name'], defInfo['recap_total_charges'],  defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp'], docket_link]
-		return result_list
-
-	else:
-		#print("Pacer docket", pacer_docket, "not found in RECAP")	
-
-		result_list =[pacer_docket, "nir", "nir", "nir", "nir", "nir",  "nir", "nir", "nir", "nir"]
-		return result_list
 
 def getChild_RECAP_Row_Generic(row):
 	#Second pass at this -- will try to make generic for wirefraud and bank robbery
@@ -736,46 +585,6 @@ def addProsecutorDefense(loadfile="child_exploit_v2.0.csv", outputfile="child_ex
 	resultDF.to_csv(outputfile, index=False)
 
 
-def create_child_master():
-
-	fjc_db = openIDB_connection()
-	#sql_file = "child_exploit_key_j.sql"
-	sql_file = "child_exploit_key_e.sql"
-	sql= open(sql_file).read()
-	resultDF = executeQuery_returnDF(fjc_db, sql)
-	fjc_db.close()
-
-	#just make it a few less as I develop the logic
-	print("This many results", len(resultDF))
-	start = 0
-	end =  len(resultDF)
-	resultDF = resultDF[start:end]
-	resultDF["prison_total"] = resultDF.apply(FJC_prison_hash, axis=1)
-	resultDF["top_disp"]= resultDF.apply(FJC_disp_hash, axis=1)
-
-
-	#Kludgy but it works - get results back as a DF and then apply to resultsDC
-	temp = resultDF.apply(getChild_RECAP_Row, axis=1)
-	temp2 = pd.DataFrame(temp.values.tolist(), index=temp.index)
-
-	resultDF['pacer_docket'] = temp2[0]
-	resultDF['recap_id'] = temp2[1]
-	resultDF['assigned_to']=temp2[2]
-	resultDF['case_name']=temp2[3]
-	resultDF['def_name']=temp2[4]
-	resultDF['r_charges_total']=temp2[5]
-	resultDF['r_convictions_total']=temp2[6]
-	resultDF['r_top_charge']=temp2[7]
-	resultDF['r_top_disp']=temp2[8]
-	resultDF['r_docket_link']=temp2[9]
-
-	#result_list =[pacer_docket, recap_id, assigned_to, case_name, defInfo['def_name'], defInfo['recap_total_charges'],  defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp']]
-
-	#Save Results
-	#resultDF = reorderColumns(resultDF)
-	resultDF.to_csv("child_exploit_E.v1.0.csv", index=False)
-
-
 def create_master_generic(sql_file, outputfile, start=0, end=-999):
 	fjc_db = openIDB_connection()
 
@@ -923,11 +732,6 @@ def test_get_child_keys():
 def addNickColumns(mainDF):
 	#This is specific to the child data set
 	
-	#First Load up Excel Sheet
-	#mainDF = pd.read_excel('child_exploit_v3.0.xlsx', sheet_name='Main')
-	#mainDF["file_date"]=mainDF["file_date"].dt.date
-	#mainDF["disp_date"]=mainDF["disp_date"].dt.date
-
 	mainDF["Minor victim"]=""
 	mainDF["Num victims"]=""
 	mainDF["Victim ages"]=""
@@ -973,33 +777,13 @@ def main():
 	#checkList_Fetch_Missing(target_file)
 
 
-	#Child Exploit - Was Round one so extra kludgey
-	#create_child_master()
-	#getLeadAttorneys(16914442)
-	#addProsecutorDefense("child_exploit_E.v1.0.csv", "child_exploit_E.v1.1.csv")
-	#myDF= pd.read_csv("child_exploit_E.v1.1.csv")
-	#myDF = reorderColumns(myDF)
-	#myDF.to_csv("child_exploit_E.v1.3.csv", index=False)
-	#closedDF = pd.read_csv("child_exploit_v2.2.csv")
-	#print("Len of closed = ", len(closedDF), "with", len(closedDF.columns), "columns")
-	#closedDF["fjc_status"] = "Closed"
-	#pendingDF = pd.read_csv("child_exploit_E.v1.3.csv")
-	#pendingDF["fjc_status"] = "Pending"
-	#pendingDF.index += 502
-	#concat_list = [closedDF, pendingDF]
-	#finalDF = pd.concat(concat_list)
-	#print("Len of final = ", len(finalDF), "with", len(finalDF.columns), "columns")
-	#finalDF = reorderColumns(finalDF)
-	#finalDF.to_csv("child_exploit_v3.0.csv", index=False)
-	#addNickColumns()
-
-	# WIREFRAUD - Round 2 is cleaner
+	# WIREFRAUD
 	#create_wirefraud_master()
 
-	# Bank Robbery - Round 3 hopefully runs smoothest
+	# Bank Robbery
 	#create_bankrobbery_master()
 
-	# Child Ex - New
+	# Child Ex
 	create_new_child_master()
 
 	#Use this to get Doppelgangers
