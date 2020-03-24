@@ -140,7 +140,15 @@ recapDefExceptHash = {
 	"4512786002":1,
 	"6233798001":0,
 	"13363156005":1,
-	"8379589002":1
+	"8379589002":1,
+	"12104337003":2,
+	"16915004007":5,
+	"17004045060":7,
+	"4973666002":1,
+	"16299271002":1,
+	"5280879003":1,
+	"15915322005":1,
+	"8141915003": 1
 }
 
 pacer_docket_hash = {
@@ -162,7 +170,27 @@ pacer_docket_hash = {
 	"1:14-cr-00600":0,
 	"8:16-cr-00608":0,
 	"8:17-cr-00364":0,
-	"8:17-cr-00064":0
+	"8:17-cr-00064":0,
+	"8:05-cr-00393":0,
+	"8:10-cr-00637":0,
+	"1:14-cr-00109":0,
+	"8:13-cr-00047":0,
+	"8:14-cr-00083":0,
+	"8:14-cr-00437":0,
+	"1:15-cr-00261":0,
+	"1:16-cr-00087":0,
+	"1:16-cr-00499":0,
+	"1:16-cr-00606":0,
+	"1:17-cr-00106":2,
+	"1:17-cr-00145":0,
+	"1:18-cr-00058":0,
+	"1:18-cr-00066":0,
+	"1:18-cr-00271":0,
+	"8:17-cr-00342":0,
+	"8:17-cr-00526":0,
+	"8:17-cr-00578":0,
+	"8:17-cr-00408":0,
+	"8:17-cr-00579":0
 }
 
 Charge_Index_Exception = {
@@ -295,7 +323,7 @@ def getDefendantInfo_RECAP_DefNo(recap_docket, defNo):
 
 		if def_index >= 20:
 			#For those rare more than 20 defendant cases
-			#I am going to assume there are no more than 40 defendant cases
+			#I am going to assume there are no more than 40 defendant cases (this is a bad assumption see 8:05-cr-00393)
 			print("Funky more than 20 defendant case")
 			nextEndpoint = myJson["next"]
 			myJson=getJSONfromAPI_Auth(nextEndpoint)
@@ -615,10 +643,18 @@ def getLeadAttorneys(recap_docket):
 	#first get the parties
 	endpoint="https://www.courtlistener.com/api/rest/v3/parties/?docket="+str(recap_docket)
 	myJson=getJSONfromAPI_Auth(endpoint)
+	
+	lead_defense = "not found"
+	lead_prosecutor = "not found"
+
+	if myJson==None:
+		print("No Json for recap_docket", recap_docket)
+		return ([lead_prosecutor, lead_defense])
+
 	results = myJson["results"]
 
 	#plaintiff aka prosecution first
-	lead_prosecutor = "not found"
+	
 	for result in results:
 		if (result["party_types"][0]["name"]=="Plaintiff"):
 			attorneys = result["attorneys"]
@@ -630,7 +666,7 @@ def getLeadAttorneys(recap_docket):
 					break
 			break
 	#print("Found lead prosecutor", lead_prosecutor)
-	lead_defense = "not found"
+	
 	for result in results:
 		if (result["party_types"][0]["name"]=="Defendant"):
 			attorneys = result["attorneys"]
@@ -666,6 +702,7 @@ def getLeadAttorneys(recap_docket):
 						break
 				break
 
+	print("Recap Docket ", recap_docket, "prosecutor=", lead_prosecutor, "defense_lead=", lead_defense)
 	return ([lead_prosecutor, lead_defense])
 
 
@@ -725,11 +762,9 @@ def create_child_master():
 	#resultDF = reorderColumns(resultDF)
 	resultDF.to_csv("child_exploit_E.v1.0.csv", index=False)
 
-def create_wirefraud_master():
 
+def create_master_generic(sql_file, outputfile, start=0, end=-999):
 	fjc_db = openIDB_connection()
-	#Unlike Child Exploit (round 1), I will deal with E/J cases together
-	sql_file = "wirefraud_key.sql"
 
 	sql= open(sql_file).read()
 	resultDF = executeQuery_returnDF(fjc_db, sql)
@@ -738,12 +773,14 @@ def create_wirefraud_master():
 	#Option to narrow results during development
 	print("*****\n*****\n")
 	print("This many results", len(resultDF))
-	start = 0
-	end =  len(resultDF) 
+	# start = This comes in from function now
+	if end ==-999:
+		end =  len(resultDF) 
+		#This is just a special case
+
 	resultDF = resultDF[start:end]
 	resultDF["prison_total"] = resultDF.apply(FJC_prison_hash, axis=1)
 	resultDF["top_disp"]= resultDF.apply(FJC_disp_hash, axis=1)
-
 	
 	#Kludgy but it works - get results back as a DF and then apply to resultsDC
 	temp = resultDF.apply(getChild_RECAP_Row_Generic, axis=1)
@@ -759,15 +796,30 @@ def create_wirefraud_master():
 	resultDF['r_top_charge']=temp2[7]
 	resultDF['r_top_disp']=temp2[8]
 	resultDF['r_docket_link']=temp2[9]
+	
+	#resultDF.to_csv("wirefraud.v2.0.csv", index=False)
+	resultDF.to_csv(outputfile, index=False)
+
+
+def create_wirefraud_master():
+	sql_file = "wirefraud_key.sql"
+	outputfile="wirefraud.v2.0.csv"
+	#create_master_generic(sql_file, outputfile)
+	#addProsecutorDefense("wirefraud.v2.0.csv", "wirefraud.v2.1.csv")
+	finalDF = pd.read_csv("wirefraud.v2.1.csv")
+	finalDF = reorderColumns(finalDF)
+	finalDF.to_csv("wirefraud.v2.2.csv", index=False)
 
 	
-	#Now Get Defendant Info
-	#result_list =[pacer_docket, recap_id, assigned_to, case_name, defInfo['def_name'], defInfo['recap_total_charges'],  defInfo['recap_total_convictions'], defInfo['recap_top_charge'], defInfo['recap_top_disp']]
-
-	#Save Results
-	#resultDF = reorderColumns(resultDF)
-	
-	resultDF.to_csv("wirefraud.v2.0.csv", index=False)
+def create_bankrobbery_master():
+	sql_file = "bank_robbery_key.sql"
+	outputfile="bank_robbery.v2.0.csv"
+	#create_master_generic(sql_file, outputfile, 700, -999)
+	#create_master_generic(sql_file, outputfile)
+	#addProsecutorDefense("bank_robbery.v2.0.csv", "bank_robbery.v2.1.csv")
+	finalDF = pd.read_csv("bank_robbery.v2.1.csv")
+	finalDF = reorderColumns(finalDF)
+	finalDF.to_csv("bank_robbery.v2.2.csv", index=False)
 
 
 def reorderColumns(inputDF):
@@ -887,43 +939,34 @@ def main():
 	#checkList_Fetch_Missing(target_file)
 
 
-	#test_get_child_keys()
+	#Child Exploit - Was Round one so extra kludgey
 	#create_child_master()
 	#getLeadAttorneys(16914442)
 	#addProsecutorDefense("child_exploit_E.v1.0.csv", "child_exploit_E.v1.1.csv")
-
 	#myDF= pd.read_csv("child_exploit_E.v1.1.csv")
 	#myDF = reorderColumns(myDF)
 	#myDF.to_csv("child_exploit_E.v1.3.csv", index=False)
-
 	#closedDF = pd.read_csv("child_exploit_v2.2.csv")
 	#print("Len of closed = ", len(closedDF), "with", len(closedDF.columns), "columns")
 	#closedDF["fjc_status"] = "Closed"
-	
-
 	#pendingDF = pd.read_csv("child_exploit_E.v1.3.csv")
 	#pendingDF["fjc_status"] = "Pending"
 	#pendingDF.index += 502
-
 	#concat_list = [closedDF, pendingDF]
 	#finalDF = pd.concat(concat_list)
 	#print("Len of final = ", len(finalDF), "with", len(finalDF.columns), "columns")
 	#finalDF = reorderColumns(finalDF)
 	#finalDF.to_csv("child_exploit_v3.0.csv", index=False)
-
 	#addNickColumns()
 
-	# STARTING WIREFRAUD
+	# WIREFRAUD - Round 2 is cleaner
 	#create_wirefraud_master()
-	#addProsecutorDefense("wirefraud.v2.0.csv", "wirefraud.v2.1.csv")
 
-	finalDF = pd.read_csv("wirefraud.v2.1.csv")
-	finalDF = reorderColumns(finalDF)
-	finalDF.to_csv("wirefraud.v2.2.csv", index=False)
+	# Bank Robbery - Round 3 hopefully runs smoothest
+	create_bankrobbery_master()
 
-
-	#print(fetch_to_RECAP_PACERID("164337"))
-	#print(fetch_to_RECAP_PACERID("379024"))
+	#Use this to get Doppelgangers
+	#print(fetch_to_RECAP_PACERID("405924"))
 
 # CALL MAIN
 main()
