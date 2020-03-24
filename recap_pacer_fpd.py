@@ -148,7 +148,18 @@ recapDefExceptHash = {
 	"16299271002":1,
 	"5280879003":1,
 	"15915322005":1,
-	"8141915003": 1
+	"8141915003": 1,
+	"12102991001":0,
+	"4954750001": 0,
+	"11939605001": 0,
+	"16901278001":0,
+	"16914462001":2,
+	"16832158002":1,
+	"4286283002":1,
+	"6280873001":0,
+	"6287198001":0,
+	"6306179001":0,
+	"6252287001":0
 }
 
 pacer_docket_hash = {
@@ -190,11 +201,16 @@ pacer_docket_hash = {
 	"8:17-cr-00526":0,
 	"8:17-cr-00578":0,
 	"8:17-cr-00408":0,
-	"8:17-cr-00579":0
+	"8:17-cr-00579":0,
+	"1:09-cr-00271":0,
+	"1:09-cr-00512":0,
+	"1:15-cr-00462":0
 }
 
 Charge_Index_Exception = {
-	"4286107001":1
+	"4286107001":1,
+	"4285619001":1,
+	"4286294001":2
 }
 def getJSONfromAPI_Auth(api_url):
 	r = requests.get(api_url, headers={'Authorization': 'Token '+cl_auth_token})
@@ -331,8 +347,6 @@ def getDefendantInfo_RECAP_DefNo(recap_docket, defNo):
 			def_index = def_index-20
 			print("Going to page2 and will look at index", def_index)
 
-
-
 		#This will be the by-hand check
 		defNoExcept = str(recap_docket)+defNo
 		if defNoExcept in recapDefExceptHash:
@@ -347,7 +361,6 @@ def getDefendantInfo_RECAP_DefNo(recap_docket, defNo):
 		print("Looking at def_index", def_index, "for recap_docket",recap_docket)
 		def_name = results[def_index]["name"]
 		
-
 		try:
 			charge_index = 0
 			if (defNoExcept in Charge_Index_Exception):
@@ -821,10 +834,19 @@ def create_bankrobbery_master():
 	finalDF = reorderColumns(finalDF)
 	finalDF.to_csv("bank_robbery.v2.2.csv", index=False)
 
+def create_new_child_master():
+	sql_file = "child_exploit_key_all.sql"
+	outputfile="child_exploit.v4.0.csv"
+	#create_master_generic(sql_file, outputfile, 525, -999)
+	#create_master_generic(sql_file, outputfile)
+	#addProsecutorDefense("child_exploit.v4.0.csv", "child_exploit.v4.1.csv")
+	finalDF = pd.read_csv("child_exploit.v4.1.csv")
+	finalDF = reorderColumns(finalDF)
+	finalDF = addNickColumns(finalDF)
+	finalDF.to_csv("child_exploit.v4.2.csv", index=False)
 
-def reorderColumns(inputDF):
 
-	#def_key	top_charge	top_disp	top_convict	prison_total	file_date	disp_date	pacer_docket	recap_id	assigned_to	case_name	def_name	r_charges_total	r_convictions_total	r_top_charge	r_top_disp	r_docket_link	prosecutor_lead	defense_lead
+def reorderColumns(inputDF, goal="child"):
 
 	outputDF = ""
 	numCols = len(inputDF.columns)
@@ -898,24 +920,36 @@ def test_get_child_keys():
 			print("Pacer docket", pacer_docket, "not found in RECAP")	
 
 
-def addNickColumns():
+def addNickColumns(mainDF):
 	#This is specific to the child data set
+	
 	#First Load up Excel Sheet
-	mainDF = pd.read_excel('child_exploit_v3.0.xlsx', sheet_name='Main')
-	mainDF["file_date"]=mainDF["file_date"].dt.date
-	mainDF["disp_date"]=mainDF["disp_date"].dt.date
+	#mainDF = pd.read_excel('child_exploit_v3.0.xlsx', sheet_name='Main')
+	#mainDF["file_date"]=mainDF["file_date"].dt.date
+	#mainDF["disp_date"]=mainDF["disp_date"].dt.date
+
 	mainDF["Minor victim"]=""
 	mainDF["Num victims"]=""
 	mainDF["Victim ages"]=""
 	mainDF["Sexual contact"]=""
 	mainDF["Plea link"]=""
 
-	#Don't have a key in common will just do by hand - below was from when I thought I had key
-	#nickDF = pd.read_excel('CHILD_EXPLOITATION.xlsx', sheet_name='DOCS')
-	#subDF = nickDF[nickDF["Minor Victim (Y/N)"] == ("Y" or "N")]
+	mainDF["File year"]=mainDF.apply(getFileYear,axis=1)
+	mainDF["Judge"]=mainDF.apply(getJudgeLastName, axis=1)
+	return mainDF
 
-	mainDF.to_excel("child_exploit_v3.0.xlsx", index=False)
+def getFileYear(row):
+	year= str(row['file_date'])[-2:] 
+	year = int("20"+year)
+	return(year)
 
+def getJudgeLastName(row):
+	fullname= str(row["assigned_to"])
+	last_name = fullname.split()[-1]
+
+	if last_name in ("Jr.", "III"):
+		last_name = fullname.split()[-2]
+	return(last_name)
 
 
 def main():
@@ -963,10 +997,13 @@ def main():
 	#create_wirefraud_master()
 
 	# Bank Robbery - Round 3 hopefully runs smoothest
-	create_bankrobbery_master()
+	#create_bankrobbery_master()
+
+	# Child Ex - New
+	create_new_child_master()
 
 	#Use this to get Doppelgangers
-	#print(fetch_to_RECAP_PACERID("405924"))
+	#print(fetch_to_RECAP_PACERID("325477"))
 
 # CALL MAIN
 main()
