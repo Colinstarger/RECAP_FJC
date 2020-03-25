@@ -628,10 +628,62 @@ def create_wirefraud_master():
 	outputfile="wirefraud.v2.0.csv"
 	#create_master_generic(sql_file, outputfile)
 	#addProsecutorDefense("wirefraud.v2.0.csv", "wirefraud.v2.1.csv")
-	finalDF = pd.read_csv("wirefraud.v2.1.csv")
-	finalDF = reorderColumns(finalDF)
-	finalDF.to_csv("wirefraud.v2.2.csv", index=False)
+	#finalDF = pd.read_csv("wirefraud.v2.1.csv")
+	#finalDF = reorderColumns(finalDF)
+	#finalDF.to_csv("wirefraud.v2.2.csv", index=False)
 
+	finalDF = pd.read_csv("wirefraud.v2.2.csv")
+	finalDF["Restitution"]=finalDF.apply(getRestitution,axis=1)
+	finalDF.to_csv("wirefraud.v2.3.csv", index=False)
+
+def getRestitution(row):
+
+	parsed_disp = str(row["r_top_disp"]).split()
+	parsed_lower = [x.lower() for x in parsed_disp]
+	
+	restitution = "none"
+
+	if ( "restitution" in parsed_lower) or ("restitution;" in parsed_lower) or ("restitution," in parsed_lower) or ("restituion" in parsed_lower):
+	
+		index=0
+
+		if ( "restitution" in parsed_lower):
+			index = parsed_lower.index("restitution")
+		
+		elif ("restitution;" in parsed_lower):
+			index = parsed_lower.index("restitution;")
+
+		elif ("restitution," in parsed_lower): 
+		 	index = parsed_lower.index("restitution,")
+
+		else: 
+		 	#("restituion" in parsed_lower):
+		 	index = parsed_lower.index("restituion")
+		
+		isLast = (index==len(parsed_lower)-1)
+		isFirst = (index==0)
+
+		if (not isLast):
+			aft = parsed_lower[index+1]
+			if (aft[0]=="$" and parsed_lower[index][-1]!=";" and parsed_lower[index][-1]!=","):
+				restitution = aft
+			else:
+				if (aft=="of" and parsed_lower[index+2][0]=="$"):
+					restitution= parsed_lower[index+2]
+				else:
+					if aft=="in" and parsed_lower[index+2]=="the" and parsed_lower[index+3]=="anount":
+						restitution= parsed_lower[index+5]	
+		
+		if restitution == "none":
+			bef = parsed_lower[index-1]
+			restitution = bef
+
+		if (restitution[-1]==";"):
+			restitution=restitution[:-1]
+		
+		return(restitution)
+
+	return("none")
 	
 def create_bankrobbery_master():
 	sql_file = "bank_robbery_key.sql"
@@ -778,13 +830,13 @@ def main():
 
 
 	# WIREFRAUD
-	#create_wirefraud_master()
+	create_wirefraud_master()
 
 	# Bank Robbery
 	#create_bankrobbery_master()
 
 	# Child Ex
-	create_new_child_master()
+	#create_new_child_master()
 
 	#Use this to get Doppelgangers
 	#print(fetch_to_RECAP_PACERID("325477"))
