@@ -45,6 +45,32 @@ Prison_Time_Hash = {
 
 }
 
+judgeHash = {
+	
+	"Richard D. Bennett":"RDB",
+	"Catherine C. Blake":"CCB",
+	"James K. Bredar":"JKB",
+	"Deborah K. Chasanow":"DKC",
+	"Theodore D. Chuang":"TDC",
+	"Andre M. Davis":"AMD",
+	"Stephanie A. Gallagher":"SAG",
+	"Marvin J. Garbis": "MJG",
+	"Paul W. Grimm": "PWG",
+	"George Jarrod Hazel": "GJH",
+	"Ellen L. Hollander": "ELH",
+	"Thomas E. Johnston": "TEJ",
+	"Benson Everett Legg": "BEL",
+	"Peter J. Messitte": "PJM",
+	"Frederick Motz": "JFM",
+	"William M. Nickerson":"WMN",
+	"William D. Quarles Jr.":"WDQ",
+	"George Levi Russell III":"GLR",
+	"Roger W. Titus": "RWT",
+	"Alexander Williams Jr.": "AW",
+	"Paula Xinis": "PX"
+
+}
+
 #This is to deal with bad recap data and multiple defendants. There does not seem to be a pattern to just fixing the items by hand
 
 recapDefExceptHash = {
@@ -632,9 +658,129 @@ def create_wirefraud_master():
 	#finalDF = reorderColumns(finalDF)
 	#finalDF.to_csv("wirefraud.v2.2.csv", index=False)
 
-	finalDF = pd.read_csv("wirefraud.v2.2.csv")
-	finalDF["Restitution"]=finalDF.apply(getRestitution,axis=1)
-	finalDF.to_csv("wirefraud.v2.3.csv", index=False)
+	#finalDF = pd.read_csv("wirefraud.v2.2.csv")
+	#finalDF["Restitution"]=finalDF.apply(getRestitution,axis=1)
+	#finalDF.to_csv("wirefraud.v2.3.csv", index=False)
+
+	#testDF = pd.read_csv("wirefraud.v2.3.csv")
+	#testDF["supervised"] = testDF.apply(getSupRelease, axis=1)
+	
+	#df_len = len(testDF) #904
+	#Just to deal with network issue
+	saveBase = "wirefraud.v.2.4"
+	
+	#i = 4
+	#start = 600
+	#interval = 200
+	#end = start+interval
+	#done = False
+
+	#while not done:
+	#	tempDF= testDF[start:end]
+	#	tempDF["detained"] = tempDF.apply(checkDetained, axis=1)
+	#	tempDF.to_csv(saveBase+"-"+str(i)+".csv")
+	#	print("\n********Saved ", saveBase+"-"+str(i)+".csv *********\n")
+	#	if end==df_len:
+	#		done=True
+	#	else:
+	#		start = end
+	#		end = start+interval
+	#		if end > df_len:
+	#			end=df_len
+	#	i+=1 
+
+	stitchDF = pd.read_csv("wirefraud.v.2.4-1.csv")
+	for stitch in range (2,6):
+		stitchfile = saveBase+"-"+str(stitch)+".csv"
+		tempDF = pd.read_csv(stitchfile)
+		stitchDF = stitchDF.append(tempDF, ignore_index=True)
+
+	stitchDF.to_csv("wirefraud.v.2.4-stitched.csv", index=False)
+
+
+
+	#testDF["detained"] = testDF.apply(checkDetained, axis=1)
+	#tempDF = testDF[["r_docket_link", "detained"]].copy()
+	#tempDF.to_csv("01_test_sup.csv")
+	#testDF.to_csv("wirefraud.v.2.4.csv")
+
+def checkDetained(row):
+	recap_id = row["recap_id"]
+	def_name = row["def_name"]
+	last_name = def_name.split()[-1].lower()
+	link = row["r_docket_link"]
+	slug = link[(link.find("united-states-v-")+len("united-states-v-")):-1]
+	#print("Matching last name", last_name, "with slug", slug)
+	slugmatch = (slug==last_name) 
+
+
+	endpoint = "https://www.courtlistener.com/api/rest/v3/docket-entries/?docket="+str(recap_id)
+	myJson = getJSONfromAPI_Auth(endpoint)
+	count = myJson["count"]
+	print("Looking for", def_name, "with count", count)
+
+	status = "didn't find"
+	found = False
+	i = 1
+	while not found:
+		results=[]
+		try:
+			results = myJson["results"]
+		except:
+			return("Json error")
+		for result in results:
+			descript = result["description"].lower()
+			if ("order of detention" in descript and ((def_name.lower() in descript) or (slugmatch and "as to" not in descript))):
+					status = "detained pretrial"
+					found=True
+					break
+			elif ("order setting conditions of release" in descript and ((def_name.lower() in descript) or (slugmatch and "as to" not in descript))):
+				status = "released pretrial"
+				found=True
+				break
+			i += 1
+			print(i, end=" ")
+		print("finished looking at ", i, "entries")
+		if (i < count and not found):
+			myJson = getJSONfromAPI_Auth(myJson["next"])
+		else:
+			found = True
+	print("result = ", status)
+	return(status)
+
+
+def getSupRelease(row):
+
+	text= row["r_top_disp"]
+	print("Looking at text", text)
+
+	semi_parse=""
+	try:
+		semi_parse = text.split(";")
+	except:
+		print("no text to parse")
+		return("NO TEXT")
+	
+	lower = [x.lower() for x in semi_parse]
+	found = False
+	for phrase in lower:
+		if "supervised release" in phrase:
+			found = phrase
+			break
+	
+	#Get rid of commas
+	if (found and found.count(",") >1):
+
+		commas = found.split(",")
+		for phrase in commas:
+			if "supervised release" in phrase:
+				found = phrase
+				break
+
+	if (found):
+		return(found)
+	else:
+		return("not found")
 
 def getRestitution(row):
 
@@ -701,11 +847,36 @@ def create_new_child_master():
 	#create_master_generic(sql_file, outputfile, 525, -999)
 	#create_master_generic(sql_file, outputfile)
 	#addProsecutorDefense("child_exploit.v4.0.csv", "child_exploit.v4.1.csv")
-	finalDF = pd.read_csv("child_exploit.v4.1.csv")
-	finalDF = reorderColumns(finalDF)
-	finalDF = addNickColumns(finalDF)
-	finalDF.to_csv("child_exploit.v4.2.csv", index=False)
+	#finalDF = pd.read_csv("child_exploit.v4.1.csv")
+	#finalDF = reorderColumns(finalDF)
+	#finalDF = addNickColumns(finalDF)
+	#finalDF.to_csv("child_exploit.v4.2.csv", index=False)
 
+	#Latest Innovation
+	finalDF = pd.read_csv("child_exploit.v4.2.csv")
+	finalDF["fpd_docket"]=finalDF.apply(getFPD_docket,axis=1)
+	finalDF.to_csv("child_exploit.v4.3.csv", index=False)
+
+
+def getFPD_docket(row):
+
+	def_key = row["def_key"]
+	fjc_docket = disagg_fjc_deflogky(def_key)["docket"]
+	year = fjc_docket[:2]
+	caseno = fjc_docket[-4:]
+	if caseno[0]=="0":
+		caseno=caseno[1:] #get rid of first 0
+	judge = row["assigned_to"]
+
+	initials=""
+	try:
+		initials = judgeHash[judge]
+	except:
+		#print("Couldn't find judge", judge)
+		return("")
+	
+	fpd_docket = initials+"-"+year+"-"+caseno
+	return(fpd_docket)
 
 def reorderColumns(inputDF, goal="child"):
 
