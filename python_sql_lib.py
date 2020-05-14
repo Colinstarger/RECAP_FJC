@@ -24,21 +24,10 @@ def excuteGenericFileQueryExportResults(dbconnection, sql_file, output_file):
 	df.to_csv(output_file)
 	
 
-
 def openIDB_connection():
 	dbconnection = mysql.connector.connect( host=fjc_host, user=fjc_colin, passwd=fjc_colin_password, db=fjc_db)
 	return dbconnection
 
-def old_main():
-	dbconnection = mysql.connector.connect( host=fjc_host, user=fjc_colin, passwd=fjc_colin_password, db=fjc_db)
-#	sql_file = "select_child_exploitation_cases.sql"
-#	output_file = "RESULTS/child_exploit_results_compare.csv"
-#	excuteGenericFileQueryExportResults(dbconnection, sql_file, output_file)
-
-	sql_file = "child_exploit_key_j.sql"
-	sql= open(sql_file).read()
-	resultDF = executeQuery_returnDF(dbconnection, sql)
-	print(resultDF)
-	dbconnection.close()
-
-
+def openIDB_connection_New():
+	dbconnection = mysql.connector.connect( host=fjc_host_new, user=fjc_colin_new, passwd=fjc_colin_password_new, db=fjc_db)
+	return dbconnection
