@@ -485,6 +485,36 @@ def getChild_RECAP_Attorneys_Row_DefNo(row):
 def getChild_RECAP_Attorneys_Row(row):
 	return(getLeadAttorneys(row["recap_id"])) 
 
+def get_Wire_FJC_Info(row):
+
+	found = False
+	top_w_charge = "not found"
+	top_w_charge_no = "NA"
+	w_charge_disp = "NA"
+	w_charge_prison = "NA"
+	
+	for t in range (1,6):
+
+		ttitle = "TTITLE"+str(t)
+		if row[ttitle] in ["18:1341*", "18:1343*", "18:1344*", "18:1349*"]:
+			found = True
+			top_w_charge = row[ttitle]
+			top_w_charge_no = t
+			w_charge_disp = row["DISP"+str(t)]
+			w_charge_disp = Disp_Code_Hash[w_charge_disp]
+			w_charge_prison = row["PRISTIM"+str(t)]
+			if w_charge_prison < 0:
+				w_charge_prison = Prison_Time_Hash[w_charge_prison]
+			
+			break
+
+	if not(found):
+		print("MAYBE SHOULDN'T INCLUDE THIS ROW")
+
+	result_list =[top_w_charge, top_w_charge_no, w_charge_disp, w_charge_prison]
+	return (result_list)
+
+
 def get_CE_FJC_Info(row):
 
 	found = False
@@ -570,8 +600,19 @@ def getChild_RECAP_Row_Generic(row):
 		result_list =[pacer_docket, "nir", "nir", "nir", "nir", "nir",  "nir", "nir", "nir", "nir"]
 		return result_list
 	
+def FJC_clean_title_wire(title):
+	#Just for WF cases
+	if title=="-8" or len(title) < 7:
+		return title
+
+	clean = title[:7]
+	if clean in ["18:1341", "18:1343", "18:1344", "18:1349"]:
+		return (clean+"*") # add '*' to avoid Pandas coercion
+	else:
+		return title
+
 def FJC_clean_title(title):
-	
+	#This works only on the CE cases which happened to have at least 8 character long titles
 	if title=="-8":
 		return "-8"
 	
@@ -632,7 +673,7 @@ def getLeadAttorneys_defNo(recap_docket, defNo):
 	if not(found):
 		print("Hmmm didn't find prosecutor")
 
-	#Here I am assuming clear data - have results etc
+	#Here I am assuming clean data - have results etc
 
 	def_index = count - int(defNo)
 	if def_index >= 20:
@@ -1101,6 +1142,36 @@ def create_bankrobbery_master():
 	finalDF.to_csv(outputfile3, index=False)
 
 
+def create_wirefraud_clean_charges():
+	#Last-minute clean-up to deal with top Wire charge v. top charge
+	sql_file = "wirefraud_supp_key.sql"
+	sql= open(sql_file).read()
+	fjc_db = openIDB_connection_New()
+	resultDF = executeQuery_returnDF(fjc_db, sql)
+	fjc_db.close()
+
+	titlecols = ["top_charge", "TTITLE1", "TTITLE2", "TTITLE3", "TTITLE4", "TTITLE5"]	
+	for title in titlecols:
+		print("cleaning up title", title)
+		resultDF[title]= resultDF.apply(lambda x: FJC_clean_title_wire(x[title]), axis=1)
+
+	resultDF["top_disp"]= resultDF.apply(FJC_disp_hash, axis=1)
+
+	temp = resultDF.apply(get_Wire_FJC_Info, axis=1)
+	temp2 = pd.DataFrame(temp.values.tolist(), index=temp.index)
+	resultDF["top_wf_convict"] = temp2[0]
+	resultDF["charge_no"] = temp2[1]
+	resultDF["wf_disp"] = temp2[2]
+	resultDF["wf_prison"] = temp2[3]
+	#resultDF = resultDF[resultDF["top_wf_charge_no"]!="NA"]
+	dropcols = ["TTITLE1", "TTITLE2", "TTITLE3", "TTITLE4", "TTITLE5", "DISP1", "DISP2", "DISP3", "DISP4", "DISP5", "PRISTIM1", "PRISTIM2", "PRISTIM3", "PRISTIM4", "PRISTIM5"]
+	resultDF = resultDF.drop(dropcols, axis=1)
+
+	resultDF=resultDF[["def_key", "top_wf_convict", "charge_no", "wf_disp", "wf_prison", "top_charge", "top_disp"]]
+
+	outputfile="wirefraud_top_charge_update.csv"
+	resultDF.to_csv(outputfile, index=False)
+
 def create_colin_child_results_part1():
 	#This is update to "create_new_child_master" but after Nick had to leave
 	sql_file = "child_exploit_key_update_j.sql"
@@ -1313,10 +1384,15 @@ def create_colin_child_results_part5():
 
 def create_colin_child_lookup_files():
 	inputfile = "child_exploit.v5.3.csv"
-	outputfile = "CP_to_fill_out.xlsx"
+	outputfile = "CP_to_fill_out_supp.xlsx"
 
 	inputDF = pd.read_csv(inputfile)
+
+	#On later round - just isolate top_ce_charge to 18:2422*
+	inputDF = inputDF[inputDF['top_ce_charge']=='18:2422*']
+
 	outputDF = inputDF[['def_name', 'top_ce_charge', 'ce_charge_disp', 'pacer_docket', 'r_docket_link', 'charged_conduct']]
+	outputDF['FPD_charged_conduct']=""
 	outputDF['sexual contact']=""
 	outputDF["minor victim"]=""
 	outputDF["num victims"]=""
@@ -1340,8 +1416,16 @@ def create_colin_child_results_part6():
 	targetDF['plea link']=""
 
 	#These come from RAs and me - by hand - with range specified
-	importFileList = [["~/Downloads/CP_to_fill_out_COLIN.xlsx", 0, 6],
-					  ["~/Downloads/Andrew_CP_SS.xlsx", 100, 110]]
+	importFileList = [["~/Downloads/Andrew_CP_SS.xlsx", 100, 199],
+					  ["~/Downloads/Andrew_CP_SS.xlsx", 311, 346],	
+					  ["~/Downloads/CP_to_fill_out_LUCAS_v04.xlsx", 7, 49],
+					  ["~/Downloads/CP_to_fill_out_LUCAS_v04.xlsx", 200, 250],
+					  ["~/Downloads/CP_to_fill_out_LUCAS_v04.xlsx", 281, 310],
+					  ["~/Downloads/CP_to_fill_out_MICAH.xlsx", 50, 99],
+					  ["~/Downloads/CP_to_fill_out_MICAH.xlsx", 251, 280],
+					  ["~/Downloads/CP_to_fill_out_COLIN.xlsx", 0, 6],
+					  ["~/Downloads/CP_to_fill_out_COLIN.xlsx", 347, 375]
+					  ]
 
 	for importFileCluster in importFileList:
 		importFile = importFileCluster[0]
@@ -1362,13 +1446,35 @@ def create_colin_child_results_part6():
 	outputfile = "child_exploit.v5.4.csv"
 	targetDF.to_csv(outputfile, index=False)
 
+def create_colin_child_results_part6_B():
+	inputfile = "child_exploit.v5.4.csv"	
+	df = pd.read_csv(inputfile)
+
+	#This is all due to a strange CL error; so am fixing these specific ones by hand
+	by_hand = {
+	"041681200229CR0020": ["Michael T Citaramanis", "Jonathan Falk Lenzner"],
+	"041611600593CR0010": ["Sedira S Banan", "David Metcalf"],
+	"041681600317CR0010": ["Amy Steffan Fitzgibbons", "Joseph Ronald Baldwin"],
+	"041681700035CR0010": ["Julie L B Stelzig", "Joseph Ronald Baldwin"],
+	"041681700577CR0010": ["James Wyda", "Joseph Ronald Baldwin"]
+	}
+
+	for key in by_hand:
+ 		row = df[df['def_key']==key].index[0]
+ 		value_pair=by_hand[key]
+ 		df.loc[row,'defense_lead']= value_pair[0]
+ 		df.loc[row,'prosecutor_lead']= value_pair[1]
+
+	df.to_csv(inputfile, index=False)
+
+
 def create_colin_child_results_part7():
 	inputfile = "child_exploit.v5.4.csv"
 	outputfile= "child_exploit.v5.5.csv"
 
-	inputDF= pd.read_csv(inputfile)
+	inputDF= pd.read_csv(inputfile, dtype={'num victims': str, 'victim ages': str})
 
-	outDF=inputDF[['File year','top_ce_charge', 'top_ce_charge_no', 'ce_charge_disp', 'ce_charge_prison', 'ce_charge_sup_release', 'prison_total', 'assigned_to', 'fpd_docket', 'def_name', 'charged_conduct', 'FPD_charged_conduct', 'sexual contact', 'minor victim', 'num victims', 'victim ages', 'prosecutor_lead', 'defense_lead','top_charge', 'top_disp', 'r_top_disp', 'r_docket_link', 'plea link', 'r_convictions_total', 'disp_date']]
+	outDF=inputDF[['File year','top_ce_charge', 'top_ce_charge_no', 'ce_charge_disp', 'ce_charge_prison', 'ce_charge_sup_release', 'prison_total', 'assigned_to', 'fpd_docket', 'def_name', 'charged_conduct', 'FPD_charged_conduct', 'sexual contact', 'minor victim', 'num victims', 'victim ages', 'prosecutor_lead', 'defense_lead','top_charge', 'top_disp', 'r_top_disp', 'r_docket_link', 'plea link', 'r_convictions_total', 'disp_date', 'def_key']]
 	
 	"""
 	['def_key', 'top_charge', 'top_disp', 'prison_total', 'file_date',
@@ -1388,6 +1494,8 @@ def create_colin_child_results_part7():
 	#outDF["r_docket_link"] = outDF.apply(lambda x: '=HYPERLINK("'+ x['r_docket_link']+'")', axis=1)
 
 	outDF.to_csv(outputfile, index=False)
+
+
 
 
 def checkExcelFile_Overlap():
@@ -1663,8 +1771,9 @@ def main():
 
 	# WIREFRAUD
 	#create_wirefraud_master()
-	updateWireAttorneys_1()
-	updateWireAttorneys_2()
+	#updateWireAttorneys_1()
+	#updateWireAttorneys_2()
+	#create_wirefraud_clean_charges()
 
 	# Bank Robbery
 	#create_bankrobbery_master()
@@ -1676,12 +1785,14 @@ def main():
 	#create_colin_child_results_part3() #get Attorneys
 	#create_colin_child_results_part4()
 	#create_colin_child_results_part5()
-	#create_colin_child_lookup_files()	
-	#create_colin_child_results_part6() #This is input by-hand data (from coded stuff)
-	#create_colin_child_results_part7() #This is re-order columns
-
+	#create_colin_child_lookup_files()	#One-off, divide up work for student coders
+	create_colin_child_results_part6() #This is input by-hand data (from coded stuff)
+	create_colin_child_results_part6_B() #This is by-hand clean up
+	create_colin_child_results_part7() #This is re-order columns 
+	
 	#Use this to get Doppelgangers
-	#print(fetch_to_RECAP_PACERID("201590"))
+	#print(fetch_to_RECAP_PACERID("321913"))
+
 	pass
 
 # CALL MAIN
